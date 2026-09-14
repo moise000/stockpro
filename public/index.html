@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>StockPro — Gestion de quincaillerie</title>
+<link rel="stylesheet" href="style.css">
+<script src="icons.js"></script>
+</head>
+<body>
+
+<!--================ ÉCRAN DE CONNEXION ================-->
+<div class="login-screen" id="loginScreen">
+  <div class="login-box">
+    <div class="login-mark"><i class="fa-solid fa-warehouse"></i></div>
+    <h1>StockPro</h1>
+    <p class="sub">Gestion de stock, ventes et fournisseurs</p>
+    <input type="password" id="loginPassword" placeholder="Mot de passe">
+    <button id="loginBtn">Se connecter</button>
+    <p class="login-error" id="loginError"></p>
+  </div>
+</div>
+
+<!--================ APPLICATION ================-->
+<div class="app-shell" id="appShell">
+
+  <aside class="sidebar">
+    <div class="sidebar-brand">
+      <div class="mark"><i class="fa-solid fa-warehouse"></i></div>
+      <div class="name">StockPro</div>
+    </div>
+    <ul class="nav-list">
+      <li class="nav-item active" data-view="dashboard"><i class="fa-solid fa-gauge-high"></i> Tableau de bord</li>
+      <li class="nav-item" data-view="articles"><i class="fa-solid fa-boxes-stacked"></i> Articles</li>
+      <li class="nav-item" data-view="pos"><i class="fa-solid fa-cash-register"></i> Point de vente</li>
+      <li class="nav-item" data-view="sales"><i class="fa-solid fa-receipt"></i> Ventes</li>
+      <li class="nav-item" data-view="suppliers"><i class="fa-solid fa-truck-field"></i> Fournisseurs</li>
+      <li class="nav-item" data-view="movements"><i class="fa-solid fa-right-left"></i> Mouvements</li>
+      <li class="nav-item" data-view="reports"><i class="fa-solid fa-chart-column"></i> Rapports</li>
+      <li class="nav-item" data-view="backups"><i class="fa-solid fa-database"></i> Sauvegardes</li>
+    </ul>
+    <div class="sidebar-footer">
+      <button class="logout-btn" id="logoutBtn"><i class="fa-solid fa-arrow-right-from-bracket"></i> Déconnexion</button>
+    </div>
+  </aside>
+
+  <main class="main">
+    <div id="passwordWarningBanner" style="display:none;"></div>
+
+    <!--================ DASHBOARD ================-->
+    <section class="view active" id="view-dashboard">
+      <div class="topbar"><span class="topbar-date" id="topbarDate"></span></div>
+      <div class="view-header">
+        <div>
+          <h1>Tableau de bord</h1>
+          <p>Vue d'ensemble de votre stock et de votre activité</p>
+        </div>
+        <div class="view-actions">
+          <button class="btn btn-primary" id="quickSaleBtn"><i class="fa-solid fa-cash-register"></i> Nouvelle vente</button>
+        </div>
+      </div>
+      <div class="kpi-grid" id="dashKpis"></div>
+
+      <div class="panel">
+        <p class="panel-title">Ventes des 7 derniers jours</p>
+        <div id="salesTrendChart"></div>
+      </div>
+
+      <div class="panel">
+        <p class="panel-title">Articles en stock bas</p>
+        <table class="data-table">
+          <thead>
+            <tr><th>Article</th><th>Catégorie</th><th class="num">Stock</th><th class="num">Seuil</th></tr>
+          </thead>
+          <tbody id="dashLowStockBody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!--================ ARTICLES ================-->
+    <section class="view" id="view-articles">
+      <div class="view-header">
+        <div>
+          <h1>Articles</h1>
+          <p id="articlesCount">—</p>
+        </div>
+        <div class="view-actions">
+          <button class="btn btn-secondary" id="openImportBtn"><i class="fa-solid fa-file-import"></i> Importer un CSV</button>
+          <button class="btn btn-primary" id="addArticleBtn"><i class="fa-solid fa-plus"></i> Ajouter un article</button>
+        </div>
+      </div>
+
+      <div class="filters-bar">
+        <input type="text" id="articleSearch" placeholder="Rechercher par nom, référence, description…">
+        <select id="articleCategoryFilter"><option value="">Toutes les catégories</option></select>
+        <div class="chip-toggle" id="lowStockToggle"><i class="fa-solid fa-triangle-exclamation"></i> Stock bas uniquement</div>
+      </div>
+
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Article</th><th>Réf.</th><th>Catégorie</th><th class="num">Stock</th>
+            <th class="num">Prix achat</th><th class="num">Prix vente</th><th>Fournisseur</th><th></th>
+          </tr>
+        </thead>
+        <tbody id="articlesTableBody"></tbody>
+      </table>
+    </section>
+
+    <!--================ POINT DE VENTE ================-->
+    <section class="view" id="view-pos">
+      <div class="view-header">
+        <div>
+          <h1>Point de vente</h1>
+          <p>Cherchez un article et ajoutez-le au panier</p>
+        </div>
+      </div>
+
+      <div class="pos-layout">
+        <div>
+          <div class="filters-bar">
+            <input type="text" id="posSearch" placeholder="Rechercher un article à vendre…">
+          </div>
+          <div class="pos-search-results" id="posResults"></div>
+        </div>
+
+        <div class="panel" style="position:sticky; top:20px;">
+          <p class="panel-title">Panier</p>
+          <div class="cart-list" id="cartList">
+            <div class="pos-empty-cart">Panier vide — cliquez sur un article pour l'ajouter.</div>
+          </div>
+
+          <div class="field">
+            <label>Nom du client (optionnel)</label>
+            <input type="text" id="posClientName" placeholder="Client de passage">
+          </div>
+          <div class="field">
+            <label>Mode de paiement</label>
+            <select id="posPaymentMethod">
+              <option value="espèces">Espèces</option>
+              <option value="mobile money">Mobile money</option>
+              <option value="virement">Virement</option>
+              <option value="crédit">Crédit / à terme</option>
+            </select>
+          </div>
+          <label class="pos-print-toggle">
+            <input type="checkbox" id="posPrintReceipt" checked>
+            <span>Imprimer un reçu après la vente</span>
+          </label>
+
+          <div class="cart-total-row">
+            <span class="cart-total-label">Total</span>
+            <span class="cart-total-value" id="cartTotal">0 FCFA</span>
+          </div>
+
+          <button class="btn btn-success" id="checkoutBtn" style="width:100%; justify-content:center;">
+            <i class="fa-solid fa-check"></i> Encaisser la vente
+          </button>
+          <p class="form-feedback" id="posFeedback"></p>
+        </div>
+      </div>
+    </section>
+
+    <!--================ VENTES ================-->
+    <section class="view" id="view-sales">
+      <div class="view-header">
+        <div>
+          <h1>Historique des ventes</h1>
+          <p id="salesCount">—</p>
+        </div>
+      </div>
+      <table class="data-table">
+        <thead>
+          <tr><th>N°</th><th>Date</th><th>Client</th><th>Paiement</th><th class="num">Total</th><th>Statut</th><th></th></tr>
+        </thead>
+        <tbody id="salesTableBody"></tbody>
+      </table>
+    </section>
+
+    <!--================ FOURNISSEURS ================-->
+    <section class="view" id="view-suppliers">
+      <div class="view-header">
+        <div>
+          <h1>Fournisseurs</h1>
+          <p id="suppliersCount">—</p>
+        </div>
+        <div class="view-actions">
+          <button class="btn btn-primary" id="addSupplierBtn"><i class="fa-solid fa-plus"></i> Ajouter un fournisseur</button>
+        </div>
+      </div>
+      <table class="data-table">
+        <thead>
+          <tr><th>Nom</th><th>Téléphone</th><th>Email</th><th class="num">Articles</th><th></th></tr>
+        </thead>
+        <tbody id="suppliersTableBody"></tbody>
+      </table>
+    </section>
+
+    <!--================ MOUVEMENTS ================-->
+    <section class="view" id="view-movements">
+      <div class="view-header">
+        <div>
+          <h1>Mouvements de stock</h1>
+          <p>Historique des entrées, sorties et corrections</p>
+        </div>
+      </div>
+      <div class="filters-bar">
+        <select id="movementTypeFilter">
+          <option value="">Tous les mouvements</option>
+          <option value="in">Entrées</option>
+          <option value="out">Sorties</option>
+        </select>
+      </div>
+      <table class="data-table">
+        <thead>
+          <tr><th>Date</th><th>Article</th><th>Type</th><th class="num">Quantité</th><th>Motif</th><th>Note</th></tr>
+        </thead>
+        <tbody id="movementsTableBody"></tbody>
+      </table>
+    </section>
+
+    <!--================ RAPPORTS ================-->
+    <section class="view" id="view-reports">
+      <div class="view-header">
+        <div>
+          <h1>Rapports</h1>
+          <p>Performance des ventes et valeur du stock</p>
+        </div>
+        <div class="view-actions">
+          <select id="reportPeriod">
+            <option value="">Depuis toujours</option>
+            <option value="week">7 derniers jours</option>
+            <option value="month" selected>Ce mois-ci</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="kpi-grid" id="reportKpis"></div>
+
+      <div class="reports-grid">
+        <div class="panel">
+          <p class="panel-title">Top 10 des articles les plus vendus</p>
+          <div id="topArticlesChart"></div>
+        </div>
+        <div class="panel">
+          <p class="panel-title">Valeur du stock par catégorie</p>
+          <div id="categoryDonutChart"></div>
+        </div>
+      </div>
+    </section>
+
+    <!--================ SAUVEGARDES ================-->
+    <section class="view" id="view-backups">
+      <div class="view-header">
+        <div>
+          <h1>Sauvegardes</h1>
+          <p>Une copie de sécurité de tout votre stock et vos ventes est faite automatiquement chaque jour.</p>
+        </div>
+        <div class="view-actions">
+          <button class="btn btn-primary" id="runBackupBtn"><i class="fa-solid fa-database"></i> Faire une sauvegarde maintenant</button>
+        </div>
+      </div>
+
+      <div class="panel" style="margin-bottom:20px;">
+        <p style="margin:0; color:var(--muted); font-size:14.5px; line-height:1.6;">
+          <i class="fa-solid fa-circle-info" style="color:var(--accent); margin-right:6px;"></i>
+          En cas de problème sur votre ordinateur, ces copies permettent de retrouver tout votre stock et l'historique de vos ventes tel qu'il était au moment de la sauvegarde. Les 14 plus récentes sont gardées automatiquement.
+        </p>
+      </div>
+
+      <table class="data-table">
+        <thead>
+          <tr><th>Sauvegarde</th><th class="num">Taille</th><th>Créée le</th><th></th></tr>
+        </thead>
+        <tbody id="backupsTableBody"></tbody>
+      </table>
+    </section>
+
+  </main>
+</div>
+
+<!--================ MODALE : ARTICLE (ajout/modif) ================-->
+<div class="modal-overlay" id="articleModal">
+  <div class="modal-box wide">
+    <button class="modal-close" data-close="articleModal">✕</button>
+    <h2 id="articleModalTitle">Ajouter un article</h2>
+
+    <div class="form-grid">
+      <div class="field"><label>Nom *</label><input type="text" id="aName" placeholder="Ex : Marteau menuisier 500g"></div>
+      <div class="field"><label>Référence</label><input type="text" id="aReference" placeholder="Ex : MAR-500"></div>
+    </div>
+    <div class="form-grid">
+      <div class="field">
+        <label>Catégorie</label>
+        <input type="text" id="aCategory" list="categoryList" placeholder="Ex : Outillage">
+        <datalist id="categoryList"></datalist>
+      </div>
+      <div class="field">
+        <label>Fournisseur</label>
+        <input type="text" id="aSupplier" list="supplierList" placeholder="Ex : Quincaillerie Fall">
+        <datalist id="supplierList"></datalist>
+      </div>
+    </div>
+    <div class="form-grid">
+      <div class="field"><label>Unité</label>
+        <select id="aUnit">
+          <option value="pièce">pièce</option>
+          <option value="mètre">mètre</option>
+          <option value="kg">kg</option>
+          <option value="litre">litre</option>
+          <option value="boîte">boîte</option>
+          <option value="rouleau">rouleau</option>
+          <option value="sac">sac</option>
+        </select>
+      </div>
+      <div class="field"><label>Quantité en stock <span id="aQtyHint" style="font-weight:400;color:var(--muted);"></span></label><input type="number" id="aQuantity" min="0" step="1" placeholder="0"></div>
+    </div>
+    <div class="form-grid">
+      <div class="field"><label>Prix d'achat (FCFA) *</label><input type="number" id="aPurchasePrice" min="0" step="1" placeholder="0"></div>
+      <div class="field"><label>Prix de vente (FCFA) *</label><input type="number" id="aSalePrice" min="0" step="1" placeholder="0"></div>
+    </div>
+    <div class="form-grid">
+      <div class="field"><label>Seuil d'alerte stock bas</label><input type="number" id="aMinStock" min="0" step="1" placeholder="0"></div>
+    </div>
+    <div class="field"><label>Description (optionnel)</label><textarea id="aDescription" placeholder="Détails, dimensions, remarques…"></textarea></div>
+
+    <div class="modal-footer">
+      <button class="btn btn-secondary" data-close="articleModal">Annuler</button>
+      <button class="btn btn-primary" id="saveArticleBtn">Enregistrer</button>
+    </div>
+    <p class="form-feedback" id="articleFeedback"></p>
+  </div>
+</div>
+
+<!--================ MODALE : MOUVEMENT DE STOCK MANUEL ================-->
+<div class="modal-overlay" id="stockModal">
+  <div class="modal-box">
+    <button class="modal-close" data-close="stockModal">✕</button>
+    <h2 id="stockModalTitle">Mouvement de stock</h2>
+
+    <div class="field">
+      <label>Type de mouvement</label>
+      <select id="sType">
+        <option value="in">Entrée (réception)</option>
+        <option value="out">Sortie (perte, casse…)</option>
+        <option value="adjustment">Correction d'inventaire (nouvelle quantité exacte)</option>
+      </select>
+    </div>
+    <div class="field">
+      <label id="sQuantityLabel">Quantité</label>
+      <input type="number" id="sQuantity" min="0" step="1" placeholder="0">
+    </div>
+    <div class="field">
+      <label>Motif</label>
+      <select id="sReason">
+        <option value="achat">Achat / réception fournisseur</option>
+        <option value="casse">Casse / perte</option>
+        <option value="inventaire">Correction d'inventaire</option>
+        <option value="autre">Autre</option>
+      </select>
+    </div>
+    <div class="field"><label>Note (optionnel)</label><input type="text" id="sNote" placeholder="Ex : bon de livraison n°..."></div>
+
+    <div class="modal-footer">
+      <button class="btn btn-secondary" data-close="stockModal">Annuler</button>
+      <button class="btn btn-primary" id="saveStockBtn">Valider</button>
+    </div>
+    <p class="form-feedback" id="stockFeedback"></p>
+  </div>
+</div>
+
+<!--================ MODALE : FOURNISSEUR ================-->
+<div class="modal-overlay" id="supplierModal">
+  <div class="modal-box">
+    <button class="modal-close" data-close="supplierModal">✕</button>
+    <h2 id="supplierModalTitle">Ajouter un fournisseur</h2>
+
+    <div class="field"><label>Nom *</label><input type="text" id="supName" placeholder="Ex : Quincaillerie Fall & Fils"></div>
+    <div class="form-grid">
+      <div class="field"><label>Téléphone</label><input type="text" id="supPhone" placeholder="77 123 45 67"></div>
+      <div class="field"><label>Email</label><input type="text" id="supEmail" placeholder="contact@fournisseur.com"></div>
+    </div>
+    <div class="field"><label>Adresse</label><input type="text" id="supAddress" placeholder="Adresse ou ville"></div>
+    <div class="field"><label>Notes</label><textarea id="supNotes" placeholder="Conditions, délais de livraison…"></textarea></div>
+
+    <div class="modal-footer">
+      <button class="btn btn-secondary" data-close="supplierModal">Annuler</button>
+      <button class="btn btn-primary" id="saveSupplierBtn">Enregistrer</button>
+    </div>
+    <p class="form-feedback" id="supplierFeedback"></p>
+  </div>
+</div>
+
+<!--================ MODALE : IMPORT CSV ================-->
+<div class="modal-overlay" id="importModal">
+  <div class="modal-box wide">
+    <button class="modal-close" data-close="importModal">✕</button>
+    <h2>Importer des articles depuis un CSV</h2>
+    <p style="color:var(--muted); font-size:13.5px; margin-top:-12px; margin-bottom:16px;">
+      Colonnes reconnues : <code>name, reference, category, unit, purchasePrice, salePrice, quantity, minStock, supplier, description</code>
+      (les en-têtes en français fonctionnent aussi : nom, référence, catégorie, prix achat, prix vente, quantité, stock min, fournisseur).
+      Un article avec une référence déjà existante est mis à jour au lieu d'être dupliqué.
+    </p>
+
+    <div class="import-dropzone" id="importDropzone">
+      <i class="fa-solid fa-file-csv"></i>
+      Cliquez pour choisir un fichier .csv, ou glissez-le ici
+      <input type="file" id="importFileInput" accept=".csv" style="display:none;">
+    </div>
+
+    <textarea id="importTextarea" placeholder="…ou colle directement le contenu CSV ici" style="width:100%; min-height:140px; padding:12px; border:1px solid var(--border); border-radius:8px; font-family:var(--font-mono); font-size:12.5px;"></textarea>
+
+    <div class="modal-footer">
+      <button class="btn btn-secondary" data-close="importModal">Annuler</button>
+      <button class="btn btn-primary" id="runImportBtn">Importer</button>
+    </div>
+    <div id="importResults"></div>
+  </div>
+</div>
+
+<!--================ MODALE : DÉTAIL D'UNE VENTE ================-->
+<div class="modal-overlay" id="saleDetailModal">
+  <div class="modal-box">
+    <button class="modal-close" data-close="saleDetailModal">✕</button>
+    <h2>Détail de la vente</h2>
+    <div id="saleDetailContent"></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="validators.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
