@@ -4,14 +4,12 @@
   "description": "Touba Quincaillerie Sarr & Frère - gestion de stock, ventes et fournisseurs",
   "main": "server.js",
   "engines": {
-    "node": ">=20.x"
+    "node": ">=22.5.0"
   },
   "scripts": {
     "start": "node server.js"
   },
-  "dependencies": {
-    "better-sqlite3": "^11.3.0"
-  },
+  "dependencies": {},
   "keywords": [],
   "author": "",
   "license": "ISC"

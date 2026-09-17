@@ -1,16 +1,9 @@
-// StockPro (quincaillerie) — couche base de données (SQLite via better-sqlite3)
+// StockPro (quincaillerie) — couche base de données (SQLite via node:sqlite,
+// intégré à Node.js — voir sqlite-driver.js pour le détail du choix)
 
 const path = require('path');
 const fs = require('fs');
-
-let Database;
-try {
-  Database = require('better-sqlite3');
-} catch (e) {
-  console.error('\n❌ Le module "better-sqlite3" n\'est pas installé.');
-  console.error('   Lance `npm install` dans ce dossier, puis relance le serveur.\n');
-  process.exit(1);
-}
+const Database = require('./sqlite-driver.js');
 
 const DATA_DIR = path.join(__dirname, 'data');
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
