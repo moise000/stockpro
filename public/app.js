@@ -628,24 +628,47 @@ function renderCart() {
   } else {
     list.innerHTML = cart.map((c, i) => `
       <div class="cart-row">
-        <div class="cart-row-name">${c.name}</div>
-        <div class="cart-row-qty">
-          <button class="qty-btn" data-dec="${i}">−</button>
-          <input type="text" value="${c.quantity}" data-qty="${i}" readonly>
-          <button class="qty-btn" data-inc="${i}">+</button>
+        <div class="cart-row-top">
+          <div class="cart-row-name">${c.name}</div>
+          <button class="cart-row-remove" data-remove="${i}" title="Retirer"><i class="fa-solid fa-xmark"></i></button>
         </div>
-        <div class="cart-row-subtotal">${formatFCFA(c.price * c.quantity)}</div>
-        <button class="cart-row-remove" data-remove="${i}"><i class="fa-solid fa-xmark"></i></button>
+        <div class="cart-row-bottom">
+          <div class="cart-row-price-group">
+            <label>P.U.</label>
+            <input type="text" inputmode="decimal" class="cart-row-price" value="${c.price}" data-price="${i}" title="Modifier le prix de vente">
+          </div>
+          <div class="cart-row-qty">
+            <button class="qty-btn" data-dec="${i}">−</button>
+            <input type="text" value="${c.quantity}" data-qty="${i}" readonly>
+            <button class="qty-btn" data-inc="${i}">+</button>
+          </div>
+          <div class="cart-row-subtotal">${formatFCFA(c.price * c.quantity)}</div>
+        </div>
       </div>
     `).join('');
 
     list.querySelectorAll('[data-inc]').forEach(b => b.addEventListener('click', () => changeCartQty(Number(b.dataset.inc), 1)));
     list.querySelectorAll('[data-dec]').forEach(b => b.addEventListener('click', () => changeCartQty(Number(b.dataset.dec), -1)));
     list.querySelectorAll('[data-remove]').forEach(b => b.addEventListener('click', () => { cart.splice(Number(b.dataset.remove), 1); renderCart(); }));
+    list.querySelectorAll('[data-price]').forEach(inp => {
+      inp.addEventListener('change', () => changeCartPrice(Number(inp.dataset.price), inp.value));
+      inp.addEventListener('keydown', (e) => { if (e.key === 'Enter') inp.blur(); });
+    });
   }
 
   const total = cart.reduce((sum, c) => sum + c.price * c.quantity, 0);
   document.getElementById('cartTotal').textContent = formatFCFA(total);
+}
+
+function changeCartPrice(index, rawValue) {
+  const value = Number(String(rawValue).replace(',', '.').replace(/\s/g, ''));
+  if (!Validators.isPositiveNumber(value)) {
+    showToast('Prix de vente invalide.', 'error');
+    renderCart();
+    return;
+  }
+  cart[index].price = value;
+  renderCart();
 }
 
 function changeCartQty(index, delta) {
@@ -673,7 +696,7 @@ async function checkout() {
     const sale = await api('/api/sales', {
       method: 'POST',
       body: JSON.stringify({
-        items: cart.map(c => ({ articleId: c.articleId, quantity: c.quantity })),
+        items: cart.map(c => ({ articleId: c.articleId, quantity: c.quantity, unitPrice: c.price })),
         clientName, paymentMethod
       })
     });
@@ -772,13 +795,17 @@ async function cancelSale(id) {
   }
 }
 
-/* ---- Impression du reçu ---- */
+/* ---- Impression de la facture ---- */
+const BUSINESS_NAME = 'TOUBA QUINCAILLERIE SARR & FRÈRE';
+const BUSINESS_PHONES = '76 642 16 12 — 76 147 28 62';
+
 function printReceipt(sale) {
-  const win = window.open('', '_blank', 'width=380,height=600');
+  const win = window.open('', '_blank', 'width=480,height=720');
   const rows = sale.items.map(it => `
     <tr>
       <td>${it.articleName}</td>
       <td style="text-align:center;">${it.quantity}</td>
+      <td style="text-align:right;">${formatFCFA(it.unitPrice)}</td>
       <td style="text-align:right;">${formatFCFA(it.subtotal)}</td>
     </tr>
   `).join('');
@@ -787,32 +814,73 @@ function printReceipt(sale) {
     <html lang="fr">
     <head>
       <meta charset="UTF-8">
-      <title>Reçu — vente #${sale.id.toString().slice(-6)}</title>
+      <title>Facture — vente #${sale.id.toString().slice(-6)}</title>
       <style>
-        body{ font-family: 'Courier New', monospace; font-size: 13px; padding: 16px; color: #111; }
-        h1{ font-size: 16px; text-align: center; margin: 0 0 4px; }
-        .sub{ text-align: center; color: #555; font-size: 11.5px; margin-bottom: 14px; }
-        table{ width: 100%; border-collapse: collapse; margin: 10px 0; }
-        th, td{ padding: 4px 2px; border-bottom: 1px dashed #999; font-size: 12.5px; }
-        th{ text-align: left; border-bottom: 1px solid #333; }
-        .total-row td{ font-weight: bold; font-size: 14px; border-top: 1px solid #333; border-bottom: none; padding-top: 8px; }
-        .footer{ text-align: center; margin-top: 18px; font-size: 11.5px; color: #555; }
-        ${sale.status === 'cancelled' ? '.cancelled-stamp{ text-align:center; color:#b91c1c; font-weight:bold; border:2px solid #b91c1c; padding:4px; margin-bottom:10px; }' : ''}
+        :root{ --accent: #C6540A; --accent-dark: #A2440A; --ink: #1c1c1c; --muted: #6b6b6b; --border: #e2ddd6; }
+        *{ box-sizing: border-box; }
+        body{
+          font-family: -apple-system, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+          font-size: 13px; color: var(--ink); margin: 0; padding: 28px 26px;
+        }
+        .letterhead{
+          display: flex; align-items: center; justify-content: space-between;
+          gap: 16px; padding-bottom: 16px; border-bottom: 3px solid var(--accent); margin-bottom: 18px;
+        }
+        .letterhead-name{ font-size: 19px; font-weight: 800; letter-spacing: .3px; color: var(--accent-dark); line-height: 1.25; }
+        .letterhead-phones{ font-size: 12px; color: var(--muted); margin-top: 4px; }
+        .letterhead-badge{
+          background: var(--accent); color: white; font-weight: 700; font-size: 11.5px;
+          letter-spacing: .5px; padding: 6px 12px; border-radius: 20px; white-space: nowrap;
+        }
+        .meta-row{ display: flex; justify-content: space-between; gap: 16px; margin-bottom: 16px; font-size: 12.5px; }
+        .meta-col span{ display: block; color: var(--muted); font-size: 11px; margin-bottom: 2px; }
+        .meta-col strong{ font-size: 13px; }
+        table{ width: 100%; border-collapse: collapse; margin: 6px 0 4px; }
+        th{
+          text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: .4px;
+          color: var(--muted); padding: 6px 4px; border-bottom: 2px solid var(--ink);
+        }
+        th:not(:first-child), td:not(:first-child){ text-align: right; }
+        td{ padding: 8px 4px; border-bottom: 1px solid var(--border); font-size: 13px; }
+        .total-row td{
+          font-weight: 800; font-size: 15.5px; border-top: 2px solid var(--ink); border-bottom: none;
+          padding-top: 12px; color: var(--accent-dark);
+        }
+        .footer{ text-align: center; margin-top: 26px; font-size: 11.5px; color: var(--muted); }
+        .cancelled-stamp{
+          text-align:center; color:#b91c1c; font-weight:800; border:2px solid #b91c1c;
+          border-radius: 8px; padding:6px; margin-bottom:14px; letter-spacing: .5px;
+        }
+        @media print{ body{ padding: 12mm; } }
       </style>
     </head>
     <body>
-      <h1>Reçu de vente</h1>
-      <p class="sub">Vente #${sale.id.toString().slice(-6)} — ${formatDate(sale.createdAt)}</p>
+      <div class="letterhead">
+        <div>
+          <div class="letterhead-name">${BUSINESS_NAME}</div>
+          <div class="letterhead-phones">Tél : ${BUSINESS_PHONES}</div>
+        </div>
+        <div class="letterhead-badge">FACTURE</div>
+      </div>
+
       ${sale.status === 'cancelled' ? '<p class="cancelled-stamp">VENTE ANNULÉE</p>' : ''}
-      <p class="sub">Client : ${sale.clientName || 'Client de passage'} — Paiement : ${sale.paymentMethod}</p>
+
+      <div class="meta-row">
+        <div class="meta-col"><span>N° de facture</span><strong>#${sale.id.toString().slice(-6)}</strong></div>
+        <div class="meta-col"><span>Date</span><strong>${formatDate(sale.createdAt)}</strong></div>
+        <div class="meta-col"><span>Client</span><strong>${sale.clientName || 'Client de passage'}</strong></div>
+        <div class="meta-col"><span>Paiement</span><strong>${sale.paymentMethod}</strong></div>
+      </div>
+
       <table>
-        <thead><tr><th>Article</th><th style="text-align:center;">Qté</th><th style="text-align:right;">Total</th></tr></thead>
+        <thead><tr><th>Article</th><th>Qté</th><th>P.U.</th><th>Total</th></tr></thead>
         <tbody>
           ${rows}
-          <tr class="total-row"><td colspan="2">TOTAL</td><td style="text-align:right;">${formatFCFA(sale.total)}</td></tr>
+          <tr class="total-row"><td colspan="3">TOTAL</td><td>${formatFCFA(sale.total)}</td></tr>
         </tbody>
       </table>
-      <p class="footer">Merci de votre confiance</p>
+
+      <p class="footer">Merci de votre confiance — ${BUSINESS_NAME}</p>
       <script>window.onload = () => window.print();</script>
     </body>
     </html>

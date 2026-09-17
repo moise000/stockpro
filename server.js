@@ -11,7 +11,7 @@ const backup = require('./backup.js');
 
 const PORT = process.env.PORT || 3001;
 const PUBLIC_DIR = path.join(__dirname, 'public');
-const APP_PASSWORD = process.env.APP_PASSWORD || 'modou2002';
+const APP_PASSWORD = process.env.APP_PASSWORD || 'quincaillerie123';
 
 // Protection contre les tentatives de connexion répétées — indispensable
 // maintenant que l'application est accessible depuis Internet (elle ne
@@ -232,7 +232,7 @@ const server = http.createServer(async (req, res) => {
       if (!isPasswordValid(body.password)) return sendJSON(res, 401, { error: 'Mot de passe incorrect' });
       const token = crypto.randomBytes(24).toString('hex');
       sessions.set(token, Date.now() + SESSION_DURATION_MS);
-      return sendJSON(res, 200, { token, usingDefaultPassword: APP_PASSWORD === 'modou2002' });
+      return sendJSON(res, 200, { token, usingDefaultPassword: APP_PASSWORD === 'quincaillerie123' });
     }
     if (pathname === '/api/logout' && req.method === 'POST') {
       const auth = req.headers['authorization'] || '';
@@ -461,6 +461,11 @@ const server = http.createServer(async (req, res) => {
       for (const item of body.items) {
         if (!item.articleId || !isPositiveInt(item.quantity) || item.quantity < 1) {
           return sendJSON(res, 400, { error: 'Article ou quantité invalide dans le panier' });
+        }
+        // Le prix de vente peut être ajusté manuellement à la caisse (remise, négociation...) ;
+        // s'il est fourni, il doit être un nombre valide et positif ou nul.
+        if (item.unitPrice !== undefined && item.unitPrice !== null && !isPositiveNumber(item.unitPrice)) {
+          return sendJSON(res, 400, { error: 'Prix de vente invalide dans le panier' });
         }
       }
       try {

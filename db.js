@@ -390,7 +390,10 @@ function createSale({ items, clientName, paymentMethod }) {
 
     for (const item of items) {
       const article = getArticleById(item.articleId);
-      const unitPrice = article.salePrice;
+      // Prix modifié à la caisse s'il est fourni (remise, négociation...), sinon prix catalogue.
+      const unitPrice = (item.unitPrice !== undefined && item.unitPrice !== null && item.unitPrice !== '')
+        ? Number(item.unitPrice)
+        : article.salePrice;
       const subtotal = unitPrice * item.quantity;
       total += subtotal;
 
