@@ -3,9 +3,18 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>StockPro — Gestion de quincaillerie</title>
+<title>Touba Quincaillerie Sarr & Frère — Gestion de stock</title>
 <link rel="stylesheet" href="style.css">
 <script src="icons.js"></script>
+
+<!-- Rend l'application installable sur l'écran d'accueil (iPhone et Android) -->
+<link rel="manifest" href="manifest.json">
+<link rel="icon" type="image/png" href="images/icon-192.png">
+<meta name="theme-color" content="#C6540A">
+<link rel="apple-touch-icon" href="images/icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Touba Sarr & Frère">
 </head>
 <body>
 
@@ -13,7 +22,7 @@
 <div class="login-screen" id="loginScreen">
   <div class="login-box">
     <div class="login-mark"><i class="fa-solid fa-warehouse"></i></div>
-    <h1>StockPro</h1>
+    <h1>Touba Quincaillerie<br>Sarr &amp; Frère</h1>
     <p class="sub">Gestion de stock, ventes et fournisseurs</p>
     <input type="password" id="loginPassword" placeholder="Mot de passe">
     <button id="loginBtn">Se connecter</button>
@@ -27,7 +36,7 @@
   <aside class="sidebar">
     <div class="sidebar-brand">
       <div class="mark"><i class="fa-solid fa-warehouse"></i></div>
-      <div class="name">StockPro</div>
+      <div class="name">Touba Sarr &amp; Frère</div>
     </div>
     <ul class="nav-list">
       <li class="nav-item active" data-view="dashboard"><i class="fa-solid fa-gauge-high"></i> Tableau de bord</li>
@@ -67,13 +76,15 @@
       </div>
 
       <div class="panel">
-        <p class="panel-title">Articles en stock bas</p>
-        <table class="data-table">
+        <p class="panel-title">À réapprovisionner</p>
+        <div class="table-scroll">
+      <table class="data-table">
           <thead>
-            <tr><th>Article</th><th>Catégorie</th><th class="num">Stock</th><th class="num">Seuil</th></tr>
+            <tr><th>Article</th><th class="num">Stock</th><th class="num">Seuil</th><th class="num">Jours restants</th><th class="num">À commander</th></tr>
           </thead>
           <tbody id="dashLowStockBody"></tbody>
         </table>
+      </div>
       </div>
     </section>
 
@@ -96,6 +107,7 @@
         <div class="chip-toggle" id="lowStockToggle"><i class="fa-solid fa-triangle-exclamation"></i> Stock bas uniquement</div>
       </div>
 
+      <div class="table-scroll">
       <table class="data-table">
         <thead>
           <tr>
@@ -105,6 +117,7 @@
         </thead>
         <tbody id="articlesTableBody"></tbody>
       </table>
+      </div>
     </section>
 
     <!--================ POINT DE VENTE ================-->
@@ -169,12 +182,14 @@
           <p id="salesCount">—</p>
         </div>
       </div>
+      <div class="table-scroll">
       <table class="data-table">
         <thead>
           <tr><th>N°</th><th>Date</th><th>Client</th><th>Paiement</th><th class="num">Total</th><th>Statut</th><th></th></tr>
         </thead>
         <tbody id="salesTableBody"></tbody>
       </table>
+      </div>
     </section>
 
     <!--================ FOURNISSEURS ================-->
@@ -188,12 +203,14 @@
           <button class="btn btn-primary" id="addSupplierBtn"><i class="fa-solid fa-plus"></i> Ajouter un fournisseur</button>
         </div>
       </div>
+      <div class="table-scroll">
       <table class="data-table">
         <thead>
           <tr><th>Nom</th><th>Téléphone</th><th>Email</th><th class="num">Articles</th><th></th></tr>
         </thead>
         <tbody id="suppliersTableBody"></tbody>
       </table>
+      </div>
     </section>
 
     <!--================ MOUVEMENTS ================-->
@@ -211,12 +228,14 @@
           <option value="out">Sorties</option>
         </select>
       </div>
+      <div class="table-scroll">
       <table class="data-table">
         <thead>
           <tr><th>Date</th><th>Article</th><th>Type</th><th class="num">Quantité</th><th>Motif</th><th>Note</th></tr>
         </thead>
         <tbody id="movementsTableBody"></tbody>
       </table>
+      </div>
     </section>
 
     <!--================ RAPPORTS ================-->
@@ -268,12 +287,14 @@
         </p>
       </div>
 
+      <div class="table-scroll">
       <table class="data-table">
         <thead>
           <tr><th>Sauvegarde</th><th class="num">Taille</th><th>Créée le</th><th></th></tr>
         </thead>
         <tbody id="backupsTableBody"></tbody>
       </table>
+      </div>
     </section>
 
   </main>

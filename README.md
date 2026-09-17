@@ -1,4 +1,4 @@
-# StockPro — gestion de quincaillerie
+# Touba Quincaillerie Sarr & Frère — gestion de stock
 
 Application complète de gestion de stock pour quincaillerie : articles,
 ventes (point de vente), fournisseurs, mouvements de stock et rapports.

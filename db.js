@@ -90,6 +90,10 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_articles_supplier ON articles(supplierId);
   CREATE INDEX IF NOT EXISTS idx_movements_article ON stock_movements(articleId);
   CREATE INDEX IF NOT EXISTS idx_saleitems_sale ON sale_items(saleId);
+  CREATE INDEX IF NOT EXISTS idx_saleitems_article ON sale_items(articleId);
+  CREATE INDEX IF NOT EXISTS idx_sales_createdat ON sales(createdAt);
+  CREATE INDEX IF NOT EXISTS idx_sales_status ON sales(status);
+  CREATE INDEX IF NOT EXISTS idx_movements_createdat ON stock_movements(createdAt);
 `);
 
 // Filet de sécurité pour une base créée avant l'ajout de l'annulation de vente
@@ -212,6 +216,38 @@ function insertArticle(a) {
     logMovement(id, 'in', a.quantity, 'inventaire', 'Stock initial');
   }
   return getArticleById(id);
+}
+
+// Recherche un article déjà existant qui correspond au même modèle — par
+// référence si elle est fournie (la façon la plus fiable), sinon par nom
+// exact (insensible à la casse et aux espaces superflus).
+function findMatchingArticle({ reference, name }) {
+  if (reference && String(reference).trim()) {
+    const byRef = db.prepare('SELECT * FROM articles WHERE reference = ?').get(String(reference).trim());
+    if (byRef) return byRef;
+  }
+  if (name && String(name).trim()) {
+    const byName = db.prepare('SELECT * FROM articles WHERE LOWER(TRIM(name)) = LOWER(TRIM(?))').get(name);
+    if (byName) return byName;
+  }
+  return null;
+}
+
+// Si un article du même modèle existe déjà (même référence, ou même nom),
+// la quantité saisie vient s'ajouter à celle déjà en stock — jamais de
+// doublon créé pour un simple réapprovisionnement du même article. Seule
+// la quantité est fusionnée ; le prix, la catégorie, etc. de la fiche déjà
+// existante restent inchangés (pour les modifier, on édite la fiche).
+function insertOrMergeArticle(a) {
+  const existing = findMatchingArticle({ reference: a.reference, name: a.name });
+  if (existing) {
+    const merged = adjustStock(existing.id, {
+      type: 'in', quantity: a.quantity, reason: 'inventaire', note: 'Réapprovisionnement (même article)'
+    });
+    return { article: merged, merged: true, previousQuantity: existing.quantity };
+  }
+  const created = insertArticle(a);
+  return { article: created, merged: false };
 }
 
 function updateArticle(id, fields) {
@@ -504,12 +540,58 @@ function getCategoryValueBreakdown() {
   `).all();
 }
 
+// Suggestions de réapprovisionnement — contrairement au simple "stock bas"
+// (quantité déjà sous le seuil), ceci estime le nombre de jours avant
+// rupture en se basant sur le vrai rythme de vente des 30 derniers jours,
+// et propose une quantité à commander. Un article encore au-dessus du
+// seuil mais qui se vend vite peut ainsi être détecté à l'avance.
+function getReorderSuggestions({ daysWindow = 30, alertThresholdDays = 7 } = {}) {
+  const since = new Date(Date.now() - daysWindow * 86400000).toISOString();
+
+  const sold = db.prepare(`
+    SELECT si.articleId, SUM(si.quantity) as totalSold
+    FROM sale_items si
+    JOIN sales s ON s.id = si.saleId
+    WHERE s.createdAt >= ? AND s.status = 'completed' AND si.articleId IS NOT NULL
+    GROUP BY si.articleId
+  `).all(since);
+  const soldMap = {};
+  sold.forEach(r => { soldMap[r.articleId] = r.totalSold; });
+
+  const articles = db.prepare('SELECT * FROM articles').all();
+
+  const suggestions = articles.map(a => {
+    const totalSold = soldMap[a.id] || 0;
+    const dailyRate = totalSold / daysWindow;
+    const daysRemaining = dailyRate > 0 ? a.quantity / dailyRate : null;
+    // Quantité pour retrouver ~30 jours d'avance au rythme actuel, jamais négative.
+    const suggestedQty = dailyRate > 0 ? Math.max(0, Math.ceil(dailyRate * daysWindow - a.quantity)) : 0;
+    const alreadyLow = a.quantity <= a.minStock;
+    const trendingLow = daysRemaining !== null && daysRemaining <= alertThresholdDays;
+    return {
+      articleId: a.id, name: a.name, reference: a.reference, quantity: a.quantity, minStock: a.minStock,
+      dailyRate: Math.round(dailyRate * 10) / 10,
+      daysRemaining: daysRemaining !== null ? Math.round(daysRemaining) : null,
+      suggestedQty, alreadyLow, trendingLow
+    };
+  }).filter(s => s.alreadyLow || s.trendingLow);
+
+  // Les plus urgents (rupture la plus proche, ou déjà en rupture) en premier.
+  suggestions.sort((a, b) => {
+    const da = a.daysRemaining === null ? (a.alreadyLow ? -1 : 999) : a.daysRemaining;
+    const db_ = b.daysRemaining === null ? (b.alreadyLow ? -1 : 999) : b.daysRemaining;
+    return da - db_;
+  });
+
+  return suggestions;
+}
+
 module.exports = {
   getCategories, ensureCategory, deleteCategory,
   getSuppliers, getSupplierById, insertSupplier, updateSupplier, deleteSupplier, ensureSupplierByName,
-  getArticles, getArticleById, insertArticle, updateArticle, deleteArticle, adjustStock, importArticles,
+  getArticles, getArticleById, insertArticle, insertOrMergeArticle, updateArticle, deleteArticle, adjustStock, importArticles,
   getMovements,
   createSale, getSales, getSaleById, cancelSale,
-  getDashboard, getTopArticles, getSalesByDay, getCategoryValueBreakdown
+  getDashboard, getTopArticles, getSalesByDay, getCategoryValueBreakdown, getReorderSuggestions
 };
 

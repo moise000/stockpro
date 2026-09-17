@@ -1,6 +1,6 @@
-// StockPro — backend
-// Serveur HTTP en Node.js pur. Application privée (une seule personne) :
-// tout est protégé par mot de passe, sauf la page de connexion elle-même.
+// Touba Quincaillerie Sarr & Frère — backend
+// Serveur HTTP en Node.js pur. Application utilisée en ligne par l'équipe du
+// magasin (mot de passe partagé) : tout est protégé, sauf la connexion elle-même.
 
 const http = require('http');
 const fs = require('fs');
@@ -11,14 +11,77 @@ const backup = require('./backup.js');
 
 const PORT = process.env.PORT || 3001;
 const PUBLIC_DIR = path.join(__dirname, 'public');
-const APP_PASSWORD = process.env.APP_PASSWORD || 'quincaillerie123';
-const sessions = new Set();
+const APP_PASSWORD = process.env.APP_PASSWORD || 'modou2002';
+
+// Protection contre les tentatives de connexion répétées — indispensable
+// maintenant que l'application est accessible depuis Internet (elle ne
+// l'était pas quand elle ne tournait que sur l'ordinateur du magasin).
+const rateLimitBuckets = new Map();
+
+function getClientIP(req) {
+  // La plupart des hébergeurs placent l'app derrière un proxy (répartiteur de
+  // charge, CDN...) — sans ceci, tous les visiteurs auraient la même IP
+  // apparente et la limitation bloquerait tout le monde en même temps dès
+  // qu'une seule personne dépasse la limite.
+  const forwarded = req.headers['x-forwarded-for'];
+  if (forwarded) return forwarded.split(',')[0].trim();
+  return (req.socket && req.socket.remoteAddress) || 'unknown';
+}
+
+// Renvoie true si la limite est dépassée (et incrémente le compteur sinon).
+function isRateLimited(req, routeKey, { max, windowMs }) {
+  const key = `${routeKey}:${getClientIP(req)}`;
+  const now = Date.now();
+  const bucket = rateLimitBuckets.get(key);
+
+  if (!bucket || now > bucket.resetAt) {
+    rateLimitBuckets.set(key, { count: 1, resetAt: now + windowMs });
+    return false;
+  }
+  bucket.count++;
+  return bucket.count > max;
+}
+
+// Nettoyage périodique pour éviter une fuite mémoire sur un serveur qui tourne longtemps
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, bucket] of rateLimitBuckets) {
+    if (now > bucket.resetAt) rateLimitBuckets.delete(key);
+  }
+}, 10 * 60 * 1000).unref();
+
+// Une session expire après 7 jours — avant, un jeton restait valide pour
+// toujours, ce qui n'était pas un vrai risque tant que l'application ne
+// tournait que sur l'ordinateur du magasin, mais en devient un maintenant
+// qu'elle est accessible depuis Internet.
+const SESSION_DURATION_MS = 7 * 24 * 60 * 60 * 1000;
+const sessions = new Map(); // token -> date d'expiration
+
+// Compare le mot de passe de façon protégée contre les attaques temporelles :
+// on compare des empreintes de longueur fixe plutôt que les chaînes brutes,
+// qui pourraient avoir des longueurs différentes (crypto.timingSafeEqual
+// exige des tampons de même taille).
+function isPasswordValid(candidate) {
+  const hash = (s) => crypto.createHash('sha256').update(String(s || '')).digest();
+  return crypto.timingSafeEqual(hash(candidate), hash(APP_PASSWORD));
+}
 
 function isAuthed(req) {
   const auth = req.headers['authorization'] || '';
   const token = auth.startsWith('Bearer ') ? auth.slice(7) : '';
-  return Boolean(token) && sessions.has(token);
+  if (!token || !sessions.has(token)) return false;
+  if (Date.now() > sessions.get(token)) { sessions.delete(token); return false; }
+  return true;
 }
+
+// Nettoyage périodique des sessions expirées, pour éviter une fuite mémoire
+// sur un serveur qui tourne longtemps.
+setInterval(() => {
+  const now = Date.now();
+  for (const [token, expiresAt] of sessions) {
+    if (now > expiresAt) sessions.delete(token);
+  }
+}, 60 * 60 * 1000).unref();
 
 // ---------- Validation ----------
 const HAS_LETTER_OR_DIGIT = /[A-Za-zÀ-ÖØ-öø-ÿ0-9]/;
@@ -48,11 +111,21 @@ function sendJSON(res, status, payload) {
 function parseBody(req) {
   return new Promise((resolve, reject) => {
     let raw = '';
+    let tooLarge = false;
     req.on('data', chunk => {
+      if (tooLarge) return;
       raw += chunk;
-      if (raw.length > 5e6) req.destroy(); // 5 Mo max (import CSV inclus)
+      if (raw.length > 5e6) { // 5 Mo max (import CSV inclus)
+        tooLarge = true;
+        raw = '';
+      }
     });
     req.on('end', () => {
+      if (tooLarge) {
+        const err = new Error('Fichier trop volumineux (5 Mo maximum)');
+        err.tooLarge = true;
+        return reject(err);
+      }
       if (!raw) return resolve({});
       try { resolve(JSON.parse(raw)); }
       catch (e) { reject(e); }
@@ -67,7 +140,10 @@ const MIME = {
   '.js': 'application/javascript; charset=utf-8',
   '.json': 'application/json; charset=utf-8',
   '.svg': 'image/svg+xml',
-  '.ico': 'image/x-icon'
+  '.ico': 'image/x-icon',
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg'
 };
 
 function serveStatic(req, res) {
@@ -134,6 +210,13 @@ function parseCSV(text) {
 }
 
 const server = http.createServer(async (req, res) => {
+  // En-têtes de sécurité appliqués à toutes les réponses — utile maintenant
+  // que l'application est accessible depuis Internet, pas seulement
+  // localement sur l'ordinateur du magasin.
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+
   let parsedUrl;
   try { parsedUrl = new URL(req.url, `http://${req.headers.host}`); }
   catch (e) { return sendJSON(res, 400, { error: 'URL invalide' }); }
@@ -142,11 +225,14 @@ const server = http.createServer(async (req, res) => {
   try {
     // ===== AUTHENTIFICATION =====
     if (pathname === '/api/login' && req.method === 'POST') {
+      if (isRateLimited(req, 'login', { max: 5, windowMs: 10 * 60 * 1000 })) {
+        return sendJSON(res, 429, { error: 'Trop de tentatives. Réessayez dans quelques minutes.' });
+      }
       const body = await parseBody(req).catch(() => ({}));
-      if (body.password !== APP_PASSWORD) return sendJSON(res, 401, { error: 'Mot de passe incorrect' });
+      if (!isPasswordValid(body.password)) return sendJSON(res, 401, { error: 'Mot de passe incorrect' });
       const token = crypto.randomBytes(24).toString('hex');
-      sessions.add(token);
-      return sendJSON(res, 200, { token, usingDefaultPassword: APP_PASSWORD === 'quincaillerie123' });
+      sessions.set(token, Date.now() + SESSION_DURATION_MS);
+      return sendJSON(res, 200, { token, usingDefaultPassword: APP_PASSWORD === 'modou2002' });
     }
     if (pathname === '/api/logout' && req.method === 'POST') {
       const auth = req.headers['authorization'] || '';
@@ -173,7 +259,7 @@ const server = http.createServer(async (req, res) => {
       // Un lien <a> classique ne peut pas envoyer d'en-tête Authorization,
       // donc ce téléchargement accepte aussi le token en paramètre d'URL.
       const queryToken = searchParams.get('token');
-      const authorized = isAuthed(req) || (queryToken && sessions.has(queryToken));
+      const authorized = isAuthed(req) || (queryToken && sessions.has(queryToken) && Date.now() <= sessions.get(queryToken));
       if (!authorized) return sendJSON(res, 401, { error: 'Non autorisé' });
       const filename = pathname.slice('/api/backups/'.length);
       const filePath = backup.getBackupPath(decodeURIComponent(filename));
@@ -204,6 +290,9 @@ const server = http.createServer(async (req, res) => {
     }
     if (pathname === '/api/reports/category-value' && req.method === 'GET') {
       return sendJSON(res, 200, store.getCategoryValueBreakdown());
+    }
+    if (pathname === '/api/reports/reorder-suggestions' && req.method === 'GET') {
+      return sendJSON(res, 200, store.getReorderSuggestions());
     }
 
     // ===== CATÉGORIES =====
@@ -261,7 +350,12 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (pathname === '/api/articles/import' && req.method === 'POST') {
-      const body = await parseBody(req).catch(() => ({}));
+      let body;
+      try { body = await parseBody(req); }
+      catch (e) {
+        if (e.tooLarge) return sendJSON(res, 413, { error: e.message });
+        body = {};
+      }
       if (!body.csv || typeof body.csv !== 'string') return sendJSON(res, 400, { error: 'Fichier CSV manquant' });
       const rows = parseCSV(body.csv);
       if (rows.length === 0) return sendJSON(res, 400, { error: 'Aucune ligne exploitable dans le fichier' });
@@ -289,13 +383,16 @@ const server = http.createServer(async (req, res) => {
       const categoryId = category ? store.ensureCategory(category) : null;
       const supplierId = supplier ? store.ensureSupplierByName(supplier) : null;
 
-      const article = store.insertArticle({
+      const result = store.insertOrMergeArticle({
         reference: reference || null, name: name.trim(), categoryId, unit: unit || 'pièce',
         purchasePrice: Number(purchasePrice), salePrice: Number(salePrice),
         quantity: Number(quantity) || 0, minStock: Number(minStock) || 0,
         supplierId, description: description || ''
       });
-      return sendJSON(res, 201, article);
+      return sendJSON(res, 201, {
+        ...result.article, merged: result.merged,
+        previousQuantity: result.merged ? result.previousQuantity : undefined
+      });
     }
 
     if (articleMatch && req.method === 'PUT') {
@@ -402,6 +499,6 @@ const server = http.createServer(async (req, res) => {
 });
 
 server.listen(PORT, () => {
-  console.log(`StockPro — backend lancé sur http://localhost:${PORT}`);
+  console.log(`Touba Quincaillerie Sarr & Frère — backend lancé sur http://localhost:${PORT}`);
   backup.startAutoBackup();
 });

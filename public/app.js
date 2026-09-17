@@ -8,6 +8,21 @@ let suppliers = [];
 let cachedArticles = [];
 let cart = []; // { articleId, name, price, quantity, maxStock }
 
+const TOKEN_STORAGE_KEY = 'stockpro_token';
+
+// Centralise la sauvegarde et l'effacement du jeton — sans ça, la connexion
+// ne survivait pas à un simple rechargement de page (gênant en usage
+// quotidien réel, surtout sur téléphone où les rechargements accidentels
+// sont fréquents).
+function saveToken(token) {
+  authToken = token;
+  try { localStorage.setItem(TOKEN_STORAGE_KEY, token); } catch (e) { /* stockage indisponible, tant pis */ }
+}
+function clearToken() {
+  authToken = null;
+  try { localStorage.removeItem(TOKEN_STORAGE_KEY); } catch (e) { /* stockage indisponible, tant pis */ }
+}
+
 // ---------- API ----------
 async function api(path, options = {}) {
   const headers = { 'Content-Type': 'application/json' };
@@ -22,7 +37,7 @@ async function api(path, options = {}) {
 }
 
 function handleSessionExpired() {
-  authToken = null;
+  clearToken();
   document.getElementById('appShell').classList.remove('visible');
   document.getElementById('loginScreen').style.display = 'flex';
   document.getElementById('loginError').textContent = 'Votre session a expiré (le serveur a peut-être redémarré). Reconnectez-vous — vos données n\'ont pas été perdues.';
@@ -77,7 +92,7 @@ function initLogin() {
     if (!password) return;
     try {
       const data = await api('/api/login', { method: 'POST', body: JSON.stringify({ password }) });
-      authToken = data.token;
+      saveToken(data.token);
       document.getElementById('loginScreen').style.display = 'none';
       document.getElementById('appShell').classList.add('visible');
       if (data.usingDefaultPassword) showPasswordWarning();
@@ -91,7 +106,7 @@ function initLogin() {
 
   document.getElementById('logoutBtn').addEventListener('click', async () => {
     try { await api('/api/logout', { method: 'POST' }); } catch (e) {}
-    authToken = null;
+    clearToken();
     document.getElementById('appShell').classList.remove('visible');
     document.getElementById('loginScreen').style.display = 'flex';
     input.value = '';
@@ -201,7 +216,7 @@ async function loadDashboard() {
         </div>
       </div>
       <div class="kpi-card">
-        <div class="kpi-icon"><i class="fa-solid fa-boxes-stacked"></i></div>
+        <div class="kpi-icon neutral"><i class="fa-solid fa-boxes-stacked"></i></div>
         <div class="kpi-body">
           <div class="kpi-label">Articles en stock</div>
           <div class="kpi-value" data-count="${d.totalArticles}">0</div>
@@ -217,7 +232,7 @@ async function loadDashboard() {
         </div>
       </div>
       <div class="kpi-card">
-        <div class="kpi-icon"><i class="fa-solid fa-cash-register"></i></div>
+        <div class="kpi-icon positive"><i class="fa-solid fa-cash-register"></i></div>
         <div class="kpi-body">
           <div class="kpi-label">Ventes aujourd'hui</div>
           <div class="kpi-value" style="font-size:18px;" data-count="${d.todaySalesTotal}" data-fcfa="1">0 FCFA</div>
@@ -225,7 +240,7 @@ async function loadDashboard() {
         </div>
       </div>
       <div class="kpi-card">
-        <div class="kpi-icon"><i class="fa-solid fa-chart-line"></i></div>
+        <div class="kpi-icon positive"><i class="fa-solid fa-chart-line"></i></div>
         <div class="kpi-body">
           <div class="kpi-label">Ventes ce mois-ci</div>
           <div class="kpi-value" style="font-size:18px;" data-count="${d.monthSalesTotal}" data-fcfa="1">0 FCFA</div>
@@ -242,17 +257,18 @@ async function loadDashboard() {
     const trend = await api('/api/reports/sales-by-day?days=7');
     renderTrendChart(trend);
 
-    const lowStock = await api('/api/articles?lowStock=true');
+    const reorder = await api('/api/reports/reorder-suggestions');
     const body = document.getElementById('dashLowStockBody');
-    if (lowStock.length === 0) {
-      body.innerHTML = `<tr class="empty-row"><td colspan="4"><i class="fa-solid fa-circle-check empty-state-icon"></i><div class="empty-state-title">Aucun article en stock bas</div><div class="empty-state-sub">Tout est bien approvisionné.</div></td></tr>`;
+    if (reorder.length === 0) {
+      body.innerHTML = `<tr class="empty-row"><td colspan="5"><i class="fa-solid fa-circle-check empty-state-icon"></i><div class="empty-state-title">Rien à commander pour l'instant</div><div class="empty-state-sub">Tout est bien approvisionné.</div></td></tr>`;
     } else {
-      body.innerHTML = lowStock.slice(0, 15).map(a => `
+      body.innerHTML = reorder.slice(0, 15).map(a => `
         <tr>
           <td><strong>${a.name}</strong></td>
-          <td>${a.categoryName ? `<span class="cat-tag">${a.categoryName}</span>` : '—'}</td>
-          <td class="num"><span class="qty-tag qty-low">${a.quantity} ${a.unit}</span></td>
+          <td class="num"><span class="qty-tag qty-low">${a.quantity}</span></td>
           <td class="num">${a.minStock}</td>
+          <td class="num">${a.daysRemaining !== null ? `${a.daysRemaining} j.` : '—'}</td>
+          <td class="num">${a.suggestedQty > 0 ? `<strong>${a.suggestedQty}</strong>` : '—'}</td>
         </tr>
       `).join('');
     }
@@ -276,9 +292,9 @@ function renderTrendChart(days) {
     const label = new Date(d.day).toLocaleDateString('fr-FR', { weekday: 'short' });
     return `
       <g>
-        <rect class="trend-bar ${d.total === 0 ? 'empty' : ''}" x="${x}" y="${y}" width="${barWidth}" height="${barHeight}" rx="4"></rect>
-        ${d.total > 0 ? `<text class="trend-value-label" x="${x + barWidth / 2}" y="${y - 6}" text-anchor="middle">${Math.round(d.total / 1000)}k</text>` : ''}
-        <text class="trend-axis-label" x="${x + barWidth / 2}" y="${height - 6}" text-anchor="middle">${label}</text>
+        <rect class="trend-bar ${d.total === 0 ? 'empty' : ''}" x="${x}" y="${y}" width="${barWidth}" height="${barHeight}" rx="4" style="animation-delay:${i * 0.04}s"></rect>
+        ${d.total > 0 ? `<text class="trend-value-label" x="${x + barWidth / 2}" y="${y - 6}" text-anchor="middle" style="animation-delay:${.3 + i * 0.04}s">${Math.round(d.total / 1000)}k</text>` : ''}
+        <text class="trend-axis-label" x="${x + barWidth / 2}" y="${height - 6}" text-anchor="middle" style="animation-delay:${.3 + i * 0.04}s">${label}</text>
       </g>
     `;
   }).join('');
@@ -312,7 +328,7 @@ function renderDonutChart(data) {
   }).join('');
 
   const legend = data.map((d, i) => `
-    <div class="donut-legend-row">
+    <div class="donut-legend-row" style="animation-delay:${.25 + i * 0.05}s">
       <span class="donut-legend-dot" style="background:${colors[i % colors.length]};"></span>
       <span class="donut-legend-name">${d.name}</span>
       <span class="donut-legend-value">${formatFCFA(d.value)}</span>
@@ -321,7 +337,7 @@ function renderDonutChart(data) {
 
   container.innerHTML = `
     <div class="donut-wrap">
-      <svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">${segments}</svg>
+      <svg class="donut-svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">${segments}</svg>
       <div class="donut-legend">${legend}</div>
     </div>
   `;
@@ -467,8 +483,12 @@ async function saveArticle() {
       await api(`/api/articles/${editingArticleId}`, { method: 'PUT', body: JSON.stringify(payload) });
       showToast('Article modifié.', 'success');
     } else {
-      await api('/api/articles', { method: 'POST', body: JSON.stringify(payload) });
-      showToast('Article ajouté.', 'success');
+      const result = await api('/api/articles', { method: 'POST', body: JSON.stringify(payload) });
+      if (result.merged) {
+        showToast(`"${result.name}" existe déjà — stock mis à jour : ${result.previousQuantity} → ${result.quantity}`, 'success');
+      } else {
+        showToast('Article ajouté.', 'success');
+      }
     }
     closeModal('articleModal');
     loadArticles();
@@ -1155,6 +1175,20 @@ async function boot() {
   loadDashboard();
 }
 
+// Si une session valide a déjà été sauvegardée (connexion précédente),
+// on saute l'écran de connexion directement. Si le jeton n'est en fait
+// plus valide (expiré, ou serveur redémarré), handleSessionExpired() prend
+// le relais automatiquement dès le premier appel API qui échoue avec 401.
+function tryRestoreSession() {
+  let saved = null;
+  try { saved = localStorage.getItem(TOKEN_STORAGE_KEY); } catch (e) { /* stockage indisponible */ }
+  if (!saved) return;
+  authToken = saved;
+  document.getElementById('loginScreen').style.display = 'none';
+  document.getElementById('appShell').classList.add('visible');
+  boot();
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   initLogin();
   initNav();
@@ -1166,4 +1200,5 @@ document.addEventListener('DOMContentLoaded', () => {
   initReports();
   initImport();
   initBackups();
+  tryRestoreSession();
 });

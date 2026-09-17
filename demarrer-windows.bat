@@ -1,9 +1,9 @@
 @echo off
-title StockPro
+title Touba Quincaillerie Sarr & Frere
 cd /d "%~dp0"
 
 echo ============================================
-echo   StockPro - demarrage en cours...
+echo   Touba Quincaillerie Sarr & Frere - demarrage en cours...
 echo ============================================
 echo.
 
@@ -22,10 +22,11 @@ if not exist "node_modules" (
     echo.
 )
 
-echo StockPro va s'ouvrir dans votre navigateur.
+echo L'application va s'ouvrir dans votre navigateur.
 echo Pour arreter l'application, fermez cette fenetre noire.
 echo.
 
+set APP_PASSWORD=modou2002
 start "" http://localhost:3001
 node server.js
 
