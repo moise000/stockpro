@@ -134,6 +134,30 @@
           <div class="filters-bar">
             <input type="text" id="posSearch" placeholder="Rechercher un article à vendre…">
           </div>
+          <button type="button" class="btn btn-secondary" id="toggleManualItem" style="margin-bottom:12px;">
+            <i class="fa-solid fa-plus"></i> Ajouter un article libre (hors stock)
+          </button>
+          <div class="manual-item-form" id="manualItemForm" style="display:none;">
+            <p class="manual-item-hint">Pour un article qui n'est pas encore enregistré dans le stock — utile uniquement pour un devis / une facture proforma, pas pour une vente encaissée.</p>
+            <div class="field">
+              <label>Nom de l'article</label>
+              <input type="text" id="manualItemName" placeholder="Ex : Pot de peinture 20L">
+            </div>
+            <div class="manual-item-row">
+              <div class="field">
+                <label>Quantité</label>
+                <input type="text" inputmode="decimal" id="manualItemQty" value="1">
+              </div>
+              <div class="field">
+                <label>Prix unitaire (FCFA)</label>
+                <input type="text" inputmode="decimal" id="manualItemPrice" placeholder="0">
+              </div>
+            </div>
+            <button type="button" class="btn btn-secondary" id="addManualItemBtn" style="width:100%; justify-content:center;">
+              <i class="fa-solid fa-cart-plus"></i> Ajouter au panier
+            </button>
+            <p class="form-feedback" id="manualItemFeedback"></p>
+          </div>
           <div class="pos-search-results" id="posResults"></div>
         </div>
 

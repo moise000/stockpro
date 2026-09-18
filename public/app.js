@@ -575,6 +575,50 @@ function initPOS() {
   }, 200));
   document.getElementById('checkoutBtn').addEventListener('click', checkout);
   document.getElementById('devisBtn').addEventListener('click', makeDevis);
+
+  document.getElementById('toggleManualItem').addEventListener('click', () => {
+    const form = document.getElementById('manualItemForm');
+    const isHidden = form.style.display === 'none';
+    form.style.display = isHidden ? 'block' : 'none';
+    if (isHidden) document.getElementById('manualItemName').focus();
+  });
+  document.getElementById('addManualItemBtn').addEventListener('click', addManualItemToCart);
+}
+
+// Article "libre" : un nom saisi à la main, qui n'existe pas (ou pas encore)
+// dans le stock. Utile pour un devis/facture proforma quand le client demande
+// un article que le magasin ne vend pas encore. Ne peut jamais être vendu via
+// "Encaisser la vente" puisqu'il n'y a pas de stock à décrémenter.
+function addManualItemToCart() {
+  const feedback = document.getElementById('manualItemFeedback');
+  feedback.textContent = '';
+  const name = document.getElementById('manualItemName').value.trim();
+  const qty = Number(String(document.getElementById('manualItemQty').value).replace(',', '.').replace(/\s/g, ''));
+  const price = Number(String(document.getElementById('manualItemPrice').value).replace(',', '.').replace(/\s/g, ''));
+
+  if (!name) {
+    feedback.textContent = "Indiquez le nom de l'article.";
+    feedback.className = 'form-feedback error';
+    return;
+  }
+  if (!Validators.isPositiveInt(qty) || qty < 1) {
+    feedback.textContent = 'Quantité invalide.';
+    feedback.className = 'form-feedback error';
+    return;
+  }
+  if (!Validators.isPositiveNumber(price)) {
+    feedback.textContent = 'Prix invalide.';
+    feedback.className = 'form-feedback error';
+    return;
+  }
+
+  cart.push({ articleId: null, name, price, quantity: qty, maxStock: Infinity, isManual: true });
+  renderCart();
+
+  document.getElementById('manualItemName').value = '';
+  document.getElementById('manualItemQty').value = '1';
+  document.getElementById('manualItemPrice').value = '';
+  document.getElementById('manualItemName').focus();
 }
 
 function makeDevis() {
@@ -648,7 +692,7 @@ function renderCart() {
     list.innerHTML = cart.map((c, i) => `
       <div class="cart-row">
         <div class="cart-row-top">
-          <div class="cart-row-name">${c.name}</div>
+          <div class="cart-row-name">${c.name}${c.isManual ? '<span class="cart-row-manual-badge" title="Article libre, hors stock — non vendable via Encaisser">LIBRE</span>' : ''}</div>
           <button class="cart-row-remove" data-remove="${i}" title="Retirer"><i class="fa-solid fa-xmark"></i></button>
         </div>
         <div class="cart-row-bottom">
@@ -704,6 +748,11 @@ async function checkout() {
   feedback.textContent = '';
   if (cart.length === 0) {
     feedback.textContent = 'Le panier est vide.';
+    feedback.className = 'form-feedback error';
+    return;
+  }
+  if (cart.some(c => c.isManual)) {
+    feedback.textContent = "Le panier contient un article libre (« LIBRE »), qui n'est pas dans le stock : impossible de l'encaisser. Retirez-le, ou faites un devis / une facture proforma à la place.";
     feedback.className = 'form-feedback error';
     return;
   }
