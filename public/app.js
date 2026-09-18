@@ -574,6 +574,25 @@ function initPOS() {
     renderPOSResults();
   }, 200));
   document.getElementById('checkoutBtn').addEventListener('click', checkout);
+  document.getElementById('devisBtn').addEventListener('click', makeDevis);
+}
+
+function makeDevis() {
+  const feedback = document.getElementById('posFeedback');
+  feedback.textContent = '';
+  if (cart.length === 0) {
+    feedback.textContent = 'Le panier est vide.';
+    feedback.className = 'form-feedback error';
+    return;
+  }
+  const clientName = document.getElementById('posClientName').value.trim();
+  // Un devis ne touche ni au stock ni à la base de données — c'est juste une
+  // estimation imprimable pour un client, à partir du panier actuel.
+  printDevis({
+    clientName,
+    items: cart.map(c => ({ articleName: c.name, quantity: c.quantity, unitPrice: c.price, subtotal: c.price * c.quantity })),
+    total: cart.reduce((sum, c) => sum + c.price * c.quantity, 0)
+  });
 }
 
 async function loadPOS() {
@@ -881,6 +900,94 @@ function printReceipt(sale) {
       </table>
 
       <p class="footer">Merci de votre confiance — ${BUSINESS_NAME}</p>
+      <script>window.onload = () => window.print();</script>
+    </body>
+    </html>
+  `);
+  win.document.close();
+}
+
+/* ---- Impression d'un devis (estimation, ne touche ni au stock ni aux ventes) ---- */
+function printDevis({ clientName, items, total }) {
+  const win = window.open('', '_blank', 'width=480,height=720');
+  const rows = items.map(it => `
+    <tr>
+      <td>${it.articleName}</td>
+      <td style="text-align:center;">${it.quantity}</td>
+      <td style="text-align:right;">${formatFCFA(it.unitPrice)}</td>
+      <td style="text-align:right;">${formatFCFA(it.subtotal)}</td>
+    </tr>
+  `).join('');
+  const today = formatDate(new Date().toISOString());
+  win.document.write(`
+    <!DOCTYPE html>
+    <html lang="fr">
+    <head>
+      <meta charset="UTF-8">
+      <title>Devis — ${BUSINESS_NAME}</title>
+      <style>
+        :root{ --accent: #C6540A; --accent-dark: #A2440A; --ink: #1c1c1c; --muted: #6b6b6b; --border: #e2ddd6; }
+        *{ box-sizing: border-box; }
+        body{
+          font-family: -apple-system, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+          font-size: 13px; color: var(--ink); margin: 0; padding: 28px 26px;
+        }
+        .letterhead{
+          display: flex; align-items: center; justify-content: space-between;
+          gap: 16px; padding-bottom: 16px; border-bottom: 3px solid var(--accent); margin-bottom: 18px;
+        }
+        .letterhead-name{ font-size: 19px; font-weight: 800; letter-spacing: .3px; color: var(--accent-dark); line-height: 1.25; }
+        .letterhead-phones{ font-size: 12px; color: var(--muted); margin-top: 4px; }
+        .letterhead-badge{
+          background: var(--ink); color: white; font-weight: 700; font-size: 11.5px;
+          letter-spacing: .5px; padding: 6px 12px; border-radius: 20px; white-space: nowrap;
+        }
+        .meta-row{ display: flex; justify-content: space-between; gap: 16px; margin-bottom: 16px; font-size: 12.5px; }
+        .meta-col span{ display: block; color: var(--muted); font-size: 11px; margin-bottom: 2px; }
+        .meta-col strong{ font-size: 13px; }
+        table{ width: 100%; border-collapse: collapse; margin: 6px 0 4px; }
+        th{
+          text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: .4px;
+          color: var(--muted); padding: 6px 4px; border-bottom: 2px solid var(--ink);
+        }
+        th:not(:first-child), td:not(:first-child){ text-align: right; }
+        td{ padding: 8px 4px; border-bottom: 1px solid var(--border); font-size: 13px; }
+        .total-row td{
+          font-weight: 800; font-size: 15.5px; border-top: 2px solid var(--ink); border-bottom: none;
+          padding-top: 12px; color: var(--accent-dark);
+        }
+        .notice{
+          margin-top: 16px; font-size: 11.5px; color: var(--muted); background: #f7f4f0;
+          border-radius: 8px; padding: 10px 12px; line-height: 1.5;
+        }
+        .footer{ text-align: center; margin-top: 22px; font-size: 11.5px; color: var(--muted); }
+        @media print{ body{ padding: 12mm; } }
+      </style>
+    </head>
+    <body>
+      <div class="letterhead">
+        <div>
+          <div class="letterhead-name">${BUSINESS_NAME}</div>
+          <div class="letterhead-phones">Tél : ${BUSINESS_PHONES}</div>
+        </div>
+        <div class="letterhead-badge">DEVIS</div>
+      </div>
+
+      <div class="meta-row">
+        <div class="meta-col"><span>Date</span><strong>${today}</strong></div>
+        <div class="meta-col"><span>Client</span><strong>${clientName || 'Client de passage'}</strong></div>
+      </div>
+
+      <table>
+        <thead><tr><th>Article</th><th>Qté</th><th>P.U.</th><th>Total</th></tr></thead>
+        <tbody>
+          ${rows}
+          <tr class="total-row"><td colspan="3">TOTAL ESTIMÉ</td><td>${formatFCFA(total)}</td></tr>
+        </tbody>
+      </table>
+
+      <p class="notice">Ce devis est une estimation et ne constitue pas une facture. Les prix et la disponibilité des articles peuvent être confirmés au moment de l'achat.</p>
+      <p class="footer">${BUSINESS_NAME}</p>
       <script>window.onload = () => window.print();</script>
     </body>
     </html>
