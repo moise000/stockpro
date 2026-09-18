@@ -924,7 +924,7 @@ function printDevis({ clientName, items, total }) {
     <html lang="fr">
     <head>
       <meta charset="UTF-8">
-      <title>Devis — ${BUSINESS_NAME}</title>
+      <title>Facture Proforma — ${BUSINESS_NAME}</title>
       <style>
         :root{ --accent: #C6540A; --accent-dark: #A2440A; --ink: #1c1c1c; --muted: #6b6b6b; --border: #e2ddd6; }
         *{ box-sizing: border-box; }
@@ -970,7 +970,7 @@ function printDevis({ clientName, items, total }) {
           <div class="letterhead-name">${BUSINESS_NAME}</div>
           <div class="letterhead-phones">Tél : ${BUSINESS_PHONES}</div>
         </div>
-        <div class="letterhead-badge">DEVIS</div>
+        <div class="letterhead-badge">FACTURE PROFORMA</div>
       </div>
 
       <div class="meta-row">
@@ -986,7 +986,7 @@ function printDevis({ clientName, items, total }) {
         </tbody>
       </table>
 
-      <p class="notice">Ce devis est une estimation et ne constitue pas une facture. Les prix et la disponibilité des articles peuvent être confirmés au moment de l'achat.</p>
+      <p class="notice">Cette facture proforma est une estimation et ne constitue pas une facture définitive. Les prix et la disponibilité des articles peuvent être confirmés au moment de l'achat.</p>
       <p class="footer">${BUSINESS_NAME}</p>
       <script>window.onload = () => window.print();</script>
     </body>
