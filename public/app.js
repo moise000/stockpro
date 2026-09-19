@@ -131,6 +131,7 @@ function switchView(view) {
   if (view === 'articles') loadArticles();
   if (view === 'pos') loadPOS();
   if (view === 'sales') loadSales();
+  if (view === 'debts') loadDebts();
   if (view === 'suppliers') loadSuppliers();
   if (view === 'movements') loadMovements();
   if (view === 'reports') loadReports();
@@ -760,6 +761,12 @@ async function checkout() {
   const clientName = document.getElementById('posClientName').value.trim();
   const paymentMethod = document.getElementById('posPaymentMethod').value;
 
+  if (paymentMethod === 'crédit' && !clientName) {
+    feedback.textContent = "Le nom du client est obligatoire pour une vente à crédit (une dette lui sera notée automatiquement).";
+    feedback.className = 'form-feedback error';
+    return;
+  }
+
   try {
     const sale = await api('/api/sales', {
       method: 'POST',
@@ -768,7 +775,11 @@ async function checkout() {
         clientName, paymentMethod
       })
     });
-    showToast(`Vente encaissée : ${formatFCFA(sale.total)}`, 'success');
+    if (paymentMethod === 'crédit') {
+      showToast(`Vente à crédit enregistrée : ${formatFCFA(sale.total)} noté comme dette pour ${clientName}.`, 'success');
+    } else {
+      showToast(`Vente encaissée : ${formatFCFA(sale.total)}`, 'success');
+    }
     if (document.getElementById('posPrintReceipt').checked) printReceipt(sale);
     cart = [];
     renderCart();
@@ -1152,6 +1163,176 @@ async function deleteSupplier(id) {
 }
 
 /* =====================================================
+   DETTES CLIENTS
+===================================================== */
+let customersCache = [];
+let currentDebtCustomerId = null; // client dont on affiche le détail des dettes
+let currentPaymentDebtId = null;  // dette visée par la modale de paiement
+
+function initDebts() {
+  document.getElementById('addDebtBtn').addEventListener('click', () => openDebtModal());
+  document.getElementById('saveDebtBtn').addEventListener('click', saveDebt);
+  document.getElementById('savePaymentBtn').addEventListener('click', savePayment);
+}
+
+async function loadDebts() {
+  const body = document.getElementById('debtsTableBody');
+  body.innerHTML = tableSkeleton(5);
+  try {
+    customersCache = await api('/api/customers');
+    document.getElementById('customerList').innerHTML =
+      customersCache.map(c => `<option value="${c.name}">`).join('');
+
+    const withDebt = customersCache.filter(c => c.totalDebt > 0);
+    const totalOwed = customersCache.reduce((sum, c) => sum + c.balance, 0);
+    document.getElementById('debtsCount').textContent =
+      withDebt.length === 0 ? 'Aucune dette enregistrée' : `${withDebt.length} client(s) avec dette — ${formatFCFA(totalOwed)} dû au total`;
+
+    if (withDebt.length === 0) {
+      body.innerHTML = `<tr class="empty-row"><td colspan="5"><i class="fa-solid fa-hand-holding-dollar empty-state-icon"></i><div class="empty-state-title">Aucune dette enregistrée</div><div class="empty-state-sub">Notez une dette avec le bouton ci-dessus.</div></td></tr>`;
+      return;
+    }
+
+    // Les clients avec un solde encore dû en premier.
+    const sorted = [...withDebt].sort((a, b) => b.balance - a.balance);
+    body.innerHTML = sorted.map(c => `
+      <tr>
+        <td><strong>${c.name}</strong></td>
+        <td>${c.phone || '—'}</td>
+        <td class="num">${c.balance > 0 ? formatFCFA(c.balance) : '<span style="color:var(--success, #2e7d32);">Soldé</span>'}</td>
+        <td class="num">${c.activeDebtCount}</td>
+        <td class="row-actions">
+          <button class="btn btn-secondary btn-sm" data-view-customer="${c.id}">Détail</button>
+        </td>
+      </tr>
+    `).join('');
+    body.querySelectorAll('[data-view-customer]').forEach(b =>
+      b.addEventListener('click', () => openCustomerDebtsModal(Number(b.dataset.viewCustomer))));
+  } catch (e) {
+    body.innerHTML = `<tr class="empty-row"><td colspan="5">Erreur de chargement.</td></tr>`;
+  }
+}
+
+function openDebtModal() {
+  document.getElementById('debtCustomerName').value = '';
+  document.getElementById('debtCustomerPhone').value = '';
+  document.getElementById('debtAmount').value = '';
+  document.getElementById('debtNote').value = '';
+  document.getElementById('debtFeedback').textContent = '';
+  Validators.clearAll(document.querySelectorAll('#debtModal input'));
+  openModal('debtModal');
+}
+
+async function saveDebt() {
+  const nameEl = document.getElementById('debtCustomerName');
+  const amountEl = document.getElementById('debtAmount');
+  Validators.clearAll([nameEl, amountEl]);
+  const feedback = document.getElementById('debtFeedback');
+  feedback.textContent = '';
+
+  let valid = true;
+  if (!Validators.isNonEmptyText(nameEl.value, { min: 2, max: 100 })) {
+    Validators.markInvalid(nameEl, 'Nom invalide.'); valid = false;
+  }
+  const amount = Number(String(amountEl.value).replace(',', '.').replace(/\s/g, ''));
+  if (!Validators.isPositiveNumber(amount) || amount <= 0) {
+    Validators.markInvalid(amountEl, 'Montant invalide.'); valid = false;
+  }
+  if (!valid) return;
+
+  try {
+    await api('/api/debts', {
+      method: 'POST',
+      body: JSON.stringify({
+        customerName: nameEl.value.trim(),
+        phone: document.getElementById('debtCustomerPhone').value.trim(),
+        amount,
+        note: document.getElementById('debtNote').value.trim()
+      })
+    });
+    showToast('Dette enregistrée.', 'success');
+    closeModal('debtModal');
+    loadDebts();
+  } catch (e) {
+    feedback.textContent = e.message || 'Une erreur est survenue.';
+    feedback.className = 'form-feedback error';
+  }
+}
+
+async function openCustomerDebtsModal(customerId) {
+  currentDebtCustomerId = customerId;
+  const customer = customersCache.find(c => c.id === customerId);
+  document.getElementById('customerDebtsTitle').textContent = customer ? `Dettes — ${customer.name}` : 'Dettes du client';
+  const list = document.getElementById('customerDebtsList');
+  list.innerHTML = `<p class="manual-item-hint">Chargement…</p>`;
+  openModal('customerDebtsModal');
+
+  try {
+    const debts = await api(`/api/debts?customerId=${customerId}`);
+    if (debts.length === 0) {
+      list.innerHTML = `<p class="manual-item-hint">Aucune dette pour ce client.</p>`;
+      return;
+    }
+    list.innerHTML = debts.map(d => `
+      <div class="cart-row" style="margin-bottom:10px;">
+        <div class="cart-row-top">
+          <div class="cart-row-name">
+            ${formatFCFA(d.amount)}${d.status === 'paid' ? '<span class="cart-row-manual-badge" style="color:var(--success,#2e7d32);">SOLDÉE</span>' : ''}
+          </div>
+        </div>
+        <p style="margin:4px 0; font-size:13px; color:var(--muted);">${d.note || 'Sans note'} — ${formatDate(d.createdAt)}</p>
+        <div class="cart-row-bottom">
+          <div>Payé : ${formatFCFA(d.paid)} — Reste : <strong>${formatFCFA(d.remaining)}</strong></div>
+          ${d.status !== 'paid' ? `<button class="btn btn-primary btn-sm" data-pay-debt="${d.id}">Enregistrer un paiement</button>` : ''}
+        </div>
+      </div>
+    `).join('');
+    list.querySelectorAll('[data-pay-debt]').forEach(b =>
+      b.addEventListener('click', () => openPaymentModal(Number(b.dataset.payDebt), debts.find(d => d.id === Number(b.dataset.payDebt)))));
+  } catch (e) {
+    list.innerHTML = `<p class="manual-item-hint">Erreur de chargement.</p>`;
+  }
+}
+
+function openPaymentModal(debtId, debt) {
+  currentPaymentDebtId = debtId;
+  document.getElementById('paymentDebtInfo').textContent =
+    debt ? `Reste à payer : ${formatFCFA(debt.remaining)}` : '';
+  document.getElementById('paymentAmount').value = '';
+  document.getElementById('paymentNote').value = '';
+  document.getElementById('paymentFeedback').textContent = '';
+  Validators.clearAll(document.querySelectorAll('#paymentModal input'));
+  openModal('paymentModal');
+}
+
+async function savePayment() {
+  const amountEl = document.getElementById('paymentAmount');
+  Validators.clearAll([amountEl]);
+  const feedback = document.getElementById('paymentFeedback');
+  feedback.textContent = '';
+
+  const amount = Number(String(amountEl.value).replace(',', '.').replace(/\s/g, ''));
+  if (!Validators.isPositiveNumber(amount) || amount <= 0) {
+    Validators.markInvalid(amountEl, 'Montant invalide.');
+    return;
+  }
+
+  try {
+    await api(`/api/debts/${currentPaymentDebtId}/payments`, {
+      method: 'POST',
+      body: JSON.stringify({ amount, note: document.getElementById('paymentNote').value.trim() })
+    });
+    showToast('Paiement enregistré.', 'success');
+    closeModal('paymentModal');
+    loadDebts();
+    if (currentDebtCustomerId) openCustomerDebtsModal(currentDebtCustomerId);
+  } catch (e) {
+    feedback.textContent = e.message || 'Une erreur est survenue.';
+    feedback.className = 'form-feedback error';
+  }
+}
+
+/* =====================================================
    MOUVEMENTS
 ===================================================== */
 function initMovements() {
@@ -1420,6 +1601,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initArticlesView();
   initPOS();
   initSuppliers();
+  initDebts();
   initMovements();
   initReports();
   initImport();

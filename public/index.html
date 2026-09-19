@@ -43,6 +43,7 @@
       <li class="nav-item" data-view="articles"><i class="fa-solid fa-boxes-stacked"></i> Articles</li>
       <li class="nav-item" data-view="pos"><i class="fa-solid fa-cash-register"></i> Point de vente</li>
       <li class="nav-item" data-view="sales"><i class="fa-solid fa-receipt"></i> Ventes</li>
+      <li class="nav-item" data-view="debts"><i class="fa-solid fa-hand-holding-dollar"></i> Dettes</li>
       <li class="nav-item" data-view="suppliers"><i class="fa-solid fa-truck-field"></i> Fournisseurs</li>
       <li class="nav-item" data-view="movements"><i class="fa-solid fa-right-left"></i> Mouvements</li>
       <li class="nav-item" data-view="reports"><i class="fa-solid fa-chart-column"></i> Rapports</li>
@@ -215,6 +216,27 @@
           <tr><th>N°</th><th>Date</th><th>Client</th><th>Paiement</th><th class="num">Total</th><th>Statut</th><th></th></tr>
         </thead>
         <tbody id="salesTableBody"></tbody>
+      </table>
+      </div>
+    </section>
+
+    <!--================ DETTES ================-->
+    <section class="view" id="view-debts">
+      <div class="view-header">
+        <div>
+          <h1>Dettes clients</h1>
+          <p id="debtsCount">—</p>
+        </div>
+        <div class="view-actions">
+          <button class="btn btn-primary" id="addDebtBtn"><i class="fa-solid fa-plus"></i> Noter une dette</button>
+        </div>
+      </div>
+      <div class="table-scroll">
+      <table class="data-table">
+        <thead>
+          <tr><th>Client</th><th>Téléphone</th><th class="num">Total dû</th><th class="num">Dettes actives</th><th></th></tr>
+        </thead>
+        <tbody id="debtsTableBody"></tbody>
       </table>
       </div>
     </section>
@@ -436,6 +458,57 @@
       <button class="btn btn-primary" id="saveSupplierBtn">Enregistrer</button>
     </div>
     <p class="form-feedback" id="supplierFeedback"></p>
+  </div>
+</div>
+
+<!--================ MODALE : NOTER UNE DETTE ================-->
+<div class="modal-overlay" id="debtModal">
+  <div class="modal-box">
+    <button class="modal-close" data-close="debtModal">✕</button>
+    <h2>Noter une dette</h2>
+
+    <div class="field">
+      <label>Client *</label>
+      <input type="text" id="debtCustomerName" placeholder="Nom du client" list="customerList">
+      <datalist id="customerList"></datalist>
+    </div>
+    <div class="field"><label>Téléphone</label><input type="text" id="debtCustomerPhone" placeholder="77 123 45 67"></div>
+    <div class="field"><label>Montant dû (FCFA) *</label><input type="text" inputmode="decimal" id="debtAmount" placeholder="0"></div>
+    <div class="field"><label>Note</label><textarea id="debtNote" placeholder="Ex : sac de ciment pris à crédit"></textarea></div>
+
+    <div class="modal-footer">
+      <button class="btn btn-secondary" data-close="debtModal">Annuler</button>
+      <button class="btn btn-primary" id="saveDebtBtn">Enregistrer</button>
+    </div>
+    <p class="form-feedback" id="debtFeedback"></p>
+  </div>
+</div>
+
+<!--================ MODALE : DÉTAIL DETTES D'UN CLIENT ================-->
+<div class="modal-overlay" id="customerDebtsModal">
+  <div class="modal-box wide">
+    <button class="modal-close" data-close="customerDebtsModal">✕</button>
+    <h2 id="customerDebtsTitle">Dettes du client</h2>
+    <div id="customerDebtsList"></div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" data-close="customerDebtsModal">Fermer</button>
+    </div>
+  </div>
+</div>
+
+<!--================ MODALE : ENREGISTRER UN PAIEMENT ================-->
+<div class="modal-overlay" id="paymentModal">
+  <div class="modal-box">
+    <button class="modal-close" data-close="paymentModal">✕</button>
+    <h2>Enregistrer un paiement</h2>
+    <p id="paymentDebtInfo" class="manual-item-hint"></p>
+    <div class="field"><label>Montant payé (FCFA) *</label><input type="text" inputmode="decimal" id="paymentAmount" placeholder="0"></div>
+    <div class="field"><label>Note</label><input type="text" id="paymentNote" placeholder="Optionnel"></div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" data-close="paymentModal">Annuler</button>
+      <button class="btn btn-primary" id="savePaymentBtn">Enregistrer</button>
+    </div>
+    <p class="form-feedback" id="paymentFeedback"></p>
   </div>
 </div>
 

@@ -468,6 +468,10 @@ const server = http.createServer(async (req, res) => {
           return sendJSON(res, 400, { error: 'Prix de vente invalide dans le panier' });
         }
       }
+      // Une vente à crédit devient une dette : il faut donc savoir à qui elle appartient.
+      if ((body.paymentMethod || '').trim() === 'crédit' && !isNonEmpty(body.clientName, { min: 1, max: 200 })) {
+        return sendJSON(res, 400, { error: 'Le nom du client est obligatoire pour une vente à crédit' });
+      }
       try {
         const sale = store.createSale({
           items: body.items, clientName: body.clientName || '', paymentMethod: body.paymentMethod || 'espèces'
@@ -489,6 +493,67 @@ const server = http.createServer(async (req, res) => {
       const result = store.cancelSale(Number(cancelSaleMatch[1]));
       if (result && result.error === 'NOT_FOUND') return sendJSON(res, 404, { error: 'Vente introuvable' });
       if (result && result.error === 'ALREADY_CANCELLED') return sendJSON(res, 400, { error: 'Cette vente est déjà annulée' });
+      return sendJSON(res, 200, result);
+    }
+
+    // ===== CLIENTS =====
+    if (pathname === '/api/customers' && req.method === 'GET') {
+      const search = searchParams.get('search') || '';
+      return sendJSON(res, 200, store.getCustomers({ search }));
+    }
+    if (pathname === '/api/customers' && req.method === 'POST') {
+      const body = await parseBody(req).catch(() => ({}));
+      if (!isNonEmpty(body.name, { min: 2, max: 100 })) return sendJSON(res, 400, { error: 'Nom de client invalide' });
+      const customer = store.insertCustomer({ name: body.name.trim(), phone: body.phone || '' });
+      return sendJSON(res, 201, customer);
+    }
+    const customerMatch = pathname.match(/^\/api\/customers\/(\d+)$/);
+    if (customerMatch && req.method === 'PUT') {
+      const body = await parseBody(req).catch(() => ({}));
+      if (body.name !== undefined && !isNonEmpty(body.name, { min: 2, max: 100 })) {
+        return sendJSON(res, 400, { error: 'Nom de client invalide' });
+      }
+      const updated = store.updateCustomer(Number(customerMatch[1]), body);
+      if (!updated) return sendJSON(res, 404, { error: 'Client introuvable' });
+      return sendJSON(res, 200, updated);
+    }
+    if (customerMatch && req.method === 'DELETE') {
+      const result = store.deleteCustomer(Number(customerMatch[1]));
+      if (result.error === 'HAS_DEBTS') return sendJSON(res, 400, { error: 'Ce client a des dettes enregistrées : impossible de le supprimer' });
+      if (!result.success) return sendJSON(res, 404, { error: 'Client introuvable' });
+      return sendJSON(res, 200, { success: true });
+    }
+
+    // ===== DETTES =====
+    if (pathname === '/api/debts' && req.method === 'GET') {
+      const customerId = searchParams.get('customerId') || '';
+      const status = searchParams.get('status') || '';
+      return sendJSON(res, 200, store.getDebts({ customerId, status }));
+    }
+    if (pathname === '/api/debts' && req.method === 'POST') {
+      const body = await parseBody(req).catch(() => ({}));
+      if (!isNonEmpty(body.customerName, { min: 2, max: 100 })) return sendJSON(res, 400, { error: 'Nom de client invalide' });
+      if (!isPositiveNumber(body.amount) || Number(body.amount) <= 0) return sendJSON(res, 400, { error: 'Montant de la dette invalide' });
+      const customerId = store.ensureCustomerByName(body.customerName.trim(), body.phone || '');
+      const debt = store.createDebt({ customerId, amount: Number(body.amount), note: body.note || '' });
+      return sendJSON(res, 201, debt);
+    }
+    const debtMatch = pathname.match(/^\/api\/debts\/(\d+)$/);
+    if (debtMatch && req.method === 'GET') {
+      const debt = store.getDebtById(Number(debtMatch[1]));
+      if (!debt) return sendJSON(res, 404, { error: 'Dette introuvable' });
+      return sendJSON(res, 200, debt);
+    }
+    const debtPaymentMatch = pathname.match(/^\/api\/debts\/(\d+)\/payments$/);
+    if (debtPaymentMatch && req.method === 'POST') {
+      const body = await parseBody(req).catch(() => ({}));
+      if (!isPositiveNumber(body.amount) || Number(body.amount) <= 0) return sendJSON(res, 400, { error: 'Montant de paiement invalide' });
+      const result = store.addDebtPayment(Number(debtPaymentMatch[1]), { amount: Number(body.amount), note: body.note || '' });
+      if (result.error === 'NOT_FOUND') return sendJSON(res, 404, { error: 'Dette introuvable' });
+      if (result.error === 'ALREADY_PAID') return sendJSON(res, 400, { error: 'Cette dette est déjà entièrement payée' });
+      if (result.error === 'AMOUNT_EXCEEDS_BALANCE') {
+        return sendJSON(res, 400, { error: `Le montant dépasse ce qu'il reste à payer (${result.remaining} FCFA)` });
+      }
       return sendJSON(res, 200, result);
     }
 

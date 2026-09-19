@@ -79,6 +79,34 @@ db.exec(`
     FOREIGN KEY (articleId) REFERENCES articles(id) ON DELETE SET NULL
   );
 
+  CREATE TABLE IF NOT EXISTS customers (
+    id INTEGER PRIMARY KEY,
+    name TEXT NOT NULL,
+    phone TEXT,
+    createdAt TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS debts (
+    id INTEGER PRIMARY KEY,
+    customerId INTEGER NOT NULL,
+    amount REAL NOT NULL,
+    note TEXT,
+    saleId INTEGER,
+    status TEXT NOT NULL DEFAULT 'active', -- 'active' | 'paid'
+    createdAt TEXT NOT NULL,
+    FOREIGN KEY (customerId) REFERENCES customers(id) ON DELETE CASCADE,
+    FOREIGN KEY (saleId) REFERENCES sales(id) ON DELETE SET NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS debt_payments (
+    id INTEGER PRIMARY KEY,
+    debtId INTEGER NOT NULL,
+    amount REAL NOT NULL,
+    note TEXT,
+    createdAt TEXT NOT NULL,
+    FOREIGN KEY (debtId) REFERENCES debts(id) ON DELETE CASCADE
+  );
+
   CREATE INDEX IF NOT EXISTS idx_articles_category ON articles(categoryId);
   CREATE INDEX IF NOT EXISTS idx_articles_supplier ON articles(supplierId);
   CREATE INDEX IF NOT EXISTS idx_movements_article ON stock_movements(articleId);
@@ -87,6 +115,9 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_sales_createdat ON sales(createdAt);
   CREATE INDEX IF NOT EXISTS idx_sales_status ON sales(status);
   CREATE INDEX IF NOT EXISTS idx_movements_createdat ON stock_movements(createdAt);
+  CREATE INDEX IF NOT EXISTS idx_debts_customer ON debts(customerId);
+  CREATE INDEX IF NOT EXISTS idx_debts_status ON debts(status);
+  CREATE INDEX IF NOT EXISTS idx_debtpayments_debt ON debt_payments(debtId);
 `);
 
 // Filet de sécurité pour une base créée avant l'ajout de l'annulation de vente
@@ -408,6 +439,14 @@ function createSale({ items, clientName, paymentMethod }) {
     }
 
     db.prepare('UPDATE sales SET total = ? WHERE id = ?').run(total, saleId);
+
+    // Vente à crédit : une dette est notée automatiquement pour ce client,
+    // du montant total de la vente.
+    if ((paymentMethod || '').trim() === 'crédit' && clientName && clientName.trim()) {
+      const customerId = ensureCustomerByName(clientName.trim());
+      createDebt({ customerId, amount: total, note: `Vente #${saleId}`, saleId });
+    }
+
     return getSaleById(saleId);
   });
 
@@ -456,6 +495,125 @@ function cancelSale(id) {
   tx();
 
   return getSaleById(id);
+}
+
+// =====================================================
+// CLIENTS & DETTES
+// =====================================================
+function getCustomers({ search = '' } = {}) {
+  let sql = `
+    SELECT c.*,
+      IFNULL((SELECT SUM(d.amount) FROM debts d WHERE d.customerId = c.id), 0) as totalDebt,
+      IFNULL((SELECT SUM(p.amount) FROM debt_payments p JOIN debts d ON d.id = p.debtId WHERE d.customerId = c.id), 0) as totalPaid,
+      (SELECT COUNT(*) FROM debts d WHERE d.customerId = c.id AND d.status = 'active') as activeDebtCount
+    FROM customers c
+  `;
+  const params = [];
+  if (search) {
+    sql += " WHERE (c.name || ' ' || IFNULL(c.phone,'')) LIKE ? COLLATE NOCASE";
+    params.push(`%${search}%`);
+  }
+  sql += ' ORDER BY c.name';
+  return db.prepare(sql).all(...params).map(c => ({ ...c, balance: c.totalDebt - c.totalPaid }));
+}
+
+function getCustomerById(id) {
+  const rows = getCustomers({});
+  return rows.find(c => c.id === id) || null;
+}
+
+function insertCustomer({ name, phone }) {
+  const info = db.prepare('INSERT INTO customers (name, phone, createdAt) VALUES (?, ?, ?)')
+    .run(name.trim(), phone || '', new Date().toISOString());
+  return getCustomerById(info.lastInsertRowid);
+}
+
+function updateCustomer(id, fields) {
+  const existing = db.prepare('SELECT * FROM customers WHERE id = ?').get(id);
+  if (!existing) return null;
+  const merged = { ...existing, ...fields };
+  db.prepare('UPDATE customers SET name=?, phone=? WHERE id=?').run(merged.name, merged.phone || '', id);
+  return getCustomerById(id);
+}
+
+function deleteCustomer(id) {
+  const debtCount = db.prepare('SELECT COUNT(*) as n FROM debts WHERE customerId = ?').get(id).n;
+  if (debtCount > 0) return { error: 'HAS_DEBTS' };
+  const info = db.prepare('DELETE FROM customers WHERE id = ?').run(id);
+  return { success: info.changes > 0 };
+}
+
+// Trouve un client existant par nom (insensible à la casse/espaces), sinon
+// en crée un — utilisé pour rattacher une vente à crédit ou une dette notée
+// à la main à une fiche client réutilisable.
+function ensureCustomerByName(name, phone) {
+  const clean = String(name).trim();
+  const existing = db.prepare('SELECT id FROM customers WHERE LOWER(TRIM(name)) = LOWER(TRIM(?))').get(clean);
+  if (existing) {
+    if (phone) db.prepare('UPDATE customers SET phone = ? WHERE id = ? AND (phone IS NULL OR phone = ?)').run(phone, existing.id, '');
+    return existing.id;
+  }
+  const info = db.prepare('INSERT INTO customers (name, phone, createdAt) VALUES (?, ?, ?)')
+    .run(clean, phone || '', new Date().toISOString());
+  return info.lastInsertRowid;
+}
+
+function getDebtById(id) {
+  const debt = db.prepare(`
+    SELECT d.*, c.name as customerName, c.phone as customerPhone
+    FROM debts d JOIN customers c ON c.id = d.customerId
+    WHERE d.id = ?
+  `).get(id);
+  if (!debt) return null;
+  debt.payments = db.prepare('SELECT * FROM debt_payments WHERE debtId = ? ORDER BY createdAt DESC').all(id);
+  const paid = debt.payments.reduce((sum, p) => sum + p.amount, 0);
+  debt.paid = paid;
+  debt.remaining = Math.max(0, debt.amount - paid);
+  return debt;
+}
+
+function createDebt({ customerId, amount, note, saleId }) {
+  const info = db.prepare(`
+    INSERT INTO debts (customerId, amount, note, saleId, status, createdAt)
+    VALUES (?, ?, ?, ?, 'active', ?)
+  `).run(customerId, amount, note || '', saleId || null, new Date().toISOString());
+  return getDebtById(info.lastInsertRowid);
+}
+
+function getDebts({ customerId = '', status = '' } = {}) {
+  let sql = `
+    SELECT d.*, c.name as customerName, c.phone as customerPhone,
+      IFNULL((SELECT SUM(amount) FROM debt_payments WHERE debtId = d.id), 0) as paid
+    FROM debts d JOIN customers c ON c.id = d.customerId
+  `;
+  const clauses = [];
+  const params = [];
+  if (customerId) { clauses.push('d.customerId = ?'); params.push(customerId); }
+  if (status) { clauses.push('d.status = ?'); params.push(status); }
+  if (clauses.length) sql += ' WHERE ' + clauses.join(' AND ');
+  sql += ' ORDER BY d.createdAt DESC';
+  return db.prepare(sql).all(...params).map(d => ({ ...d, remaining: Math.max(0, d.amount - d.paid) }));
+}
+
+// Enregistre un remboursement (partiel ou total) sur une dette. Le montant
+// ne peut pas dépasser ce qu'il reste à payer.
+function addDebtPayment(debtId, { amount, note }) {
+  const debt = getDebtById(debtId);
+  if (!debt) return { error: 'NOT_FOUND' };
+  if (debt.status === 'paid') return { error: 'ALREADY_PAID' };
+  if (amount > debt.remaining + 0.01) return { error: 'AMOUNT_EXCEEDS_BALANCE', remaining: debt.remaining };
+
+  const tx = db.transaction(() => {
+    db.prepare('INSERT INTO debt_payments (debtId, amount, note, createdAt) VALUES (?, ?, ?, ?)')
+      .run(debtId, amount, note || '', new Date().toISOString());
+    const newRemaining = debt.remaining - amount;
+    if (newRemaining <= 0.01) {
+      db.prepare("UPDATE debts SET status = 'paid' WHERE id = ?").run(debtId);
+    }
+  });
+  tx();
+
+  return getDebtById(debtId);
 }
 
 // =====================================================
@@ -588,6 +746,8 @@ module.exports = {
   getArticles, getArticleById, insertArticle, insertOrMergeArticle, updateArticle, deleteArticle, adjustStock, importArticles,
   getMovements,
   createSale, getSales, getSaleById, cancelSale,
+  getCustomers, getCustomerById, insertCustomer, updateCustomer, deleteCustomer, ensureCustomerByName,
+  getDebts, getDebtById, createDebt, addDebtPayment,
   getDashboard, getTopArticles, getSalesByDay, getCategoryValueBreakdown, getReorderSuggestions
 };
 
