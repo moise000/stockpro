@@ -877,7 +877,7 @@ async function cancelSale(id) {
 
 /* ---- Impression de la facture ---- */
 const BUSINESS_NAME = 'TOUBA QUINCAILLERIE SARR & FRÈRE';
-const BUSINESS_PHONES = '76 642 16 12 — 76 147 28 62';
+const BUSINESS_PHONES = '76 642 16 12 — 77 165 83 85';
 
 function printReceipt(sale) {
   const win = window.open('', '_blank', 'width=480,height=720');
