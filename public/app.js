@@ -132,6 +132,7 @@ function switchView(view) {
   if (view === 'pos') loadPOS();
   if (view === 'sales') loadSales();
   if (view === 'debts') loadDebts();
+  if (view === 'restock') loadRestock();
   if (view === 'suppliers') loadSuppliers();
   if (view === 'movements') loadMovements();
   if (view === 'reports') loadReports();
@@ -1333,6 +1334,98 @@ async function savePayment() {
 }
 
 /* =====================================================
+   PRODUITS MANQUANTS / À COMMANDER
+===================================================== */
+function initRestock() {
+  document.getElementById('addRestockBtn').addEventListener('click', () => openRestockModal());
+  document.getElementById('saveRestockBtn').addEventListener('click', saveRestock);
+}
+
+async function loadRestock() {
+  const body = document.getElementById('restockTableBody');
+  body.innerHTML = tableSkeleton(6);
+  try {
+    // Suggestions dans le champ "Produit" de la modale : les noms des
+    // articles déjà au catalogue, pour rattacher automatiquement l'entrée.
+    const articles = await api('/api/articles');
+    document.getElementById('restockArticleList').innerHTML =
+      articles.map(a => `<option value="${a.name}">`).join('');
+
+    const items = await api('/api/restock');
+    document.getElementById('restockCount').textContent =
+      items.length === 0 ? 'Aucun produit noté' : `${items.length} produit(s) à commander`;
+
+    if (items.length === 0) {
+      body.innerHTML = `<tr class="empty-row"><td colspan="6"><i class="fa-solid fa-clipboard-list empty-state-icon"></i><div class="empty-state-title">Aucun produit noté</div><div class="empty-state-sub">Notez un produit manquant avec le bouton ci-dessus.</div></td></tr>`;
+      return;
+    }
+
+    body.innerHTML = items.map(r => `
+      <tr>
+        <td><strong>${r.displayName}</strong></td>
+        <td>${r.isCatalogArticle ? '<span class="cart-row-manual-badge">Catalogue</span>' : '<span class="cart-row-manual-badge" style="color:var(--accent);">Nouveau</span>'}</td>
+        <td class="num">${r.isCatalogArticle ? `${r.articleQuantity} ${r.articleUnit || ''}`.trim() : '—'}</td>
+        <td>${r.note || '—'}</td>
+        <td>${formatDate(r.createdAt)}</td>
+        <td class="row-actions">
+          <button class="btn btn-secondary btn-sm" data-remove-restock="${r.id}">Retirer</button>
+        </td>
+      </tr>
+    `).join('');
+    body.querySelectorAll('[data-remove-restock]').forEach(b =>
+      b.addEventListener('click', () => deleteRestock(Number(b.dataset.removeRestock))));
+  } catch (e) {
+    body.innerHTML = `<tr class="empty-row"><td colspan="6">Erreur de chargement.</td></tr>`;
+  }
+}
+
+function openRestockModal() {
+  document.getElementById('restockLabel').value = '';
+  document.getElementById('restockNote').value = '';
+  document.getElementById('restockFeedback').textContent = '';
+  Validators.clearAll(document.querySelectorAll('#restockModal input'));
+  openModal('restockModal');
+}
+
+async function saveRestock() {
+  const labelEl = document.getElementById('restockLabel');
+  Validators.clearAll([labelEl]);
+  const feedback = document.getElementById('restockFeedback');
+  feedback.textContent = '';
+
+  if (!Validators.isNonEmptyText(labelEl.value, { min: 2, max: 150 })) {
+    Validators.markInvalid(labelEl, 'Nom de produit invalide.');
+    return;
+  }
+
+  try {
+    await api('/api/restock', {
+      method: 'POST',
+      body: JSON.stringify({
+        label: labelEl.value.trim(),
+        note: document.getElementById('restockNote').value.trim()
+      })
+    });
+    showToast('Produit noté.', 'success');
+    closeModal('restockModal');
+    loadRestock();
+  } catch (e) {
+    feedback.textContent = e.message || 'Une erreur est survenue.';
+    feedback.className = 'form-feedback error';
+  }
+}
+
+async function deleteRestock(id) {
+  if (!confirm('Retirer ce produit de la liste ?')) return;
+  try {
+    await api(`/api/restock/${id}`, { method: 'DELETE' });
+    loadRestock();
+  } catch (e) {
+    showToast(e.message || 'Une erreur est survenue.', 'error');
+  }
+}
+
+/* =====================================================
    MOUVEMENTS
 ===================================================== */
 function initMovements() {
@@ -1602,6 +1695,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initPOS();
   initSuppliers();
   initDebts();
+  initRestock();
   initMovements();
   initReports();
   initImport();

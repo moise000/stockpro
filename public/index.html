@@ -44,6 +44,7 @@
       <li class="nav-item" data-view="pos"><i class="fa-solid fa-cash-register"></i> Point de vente</li>
       <li class="nav-item" data-view="sales"><i class="fa-solid fa-receipt"></i> Ventes</li>
       <li class="nav-item" data-view="debts"><i class="fa-solid fa-hand-holding-dollar"></i> Dettes</li>
+      <li class="nav-item" data-view="restock"><i class="fa-solid fa-clipboard-list"></i> À commander</li>
       <li class="nav-item" data-view="suppliers"><i class="fa-solid fa-truck-field"></i> Fournisseurs</li>
       <li class="nav-item" data-view="movements"><i class="fa-solid fa-right-left"></i> Mouvements</li>
       <li class="nav-item" data-view="reports"><i class="fa-solid fa-chart-column"></i> Rapports</li>
@@ -237,6 +238,27 @@
           <tr><th>Client</th><th>Téléphone</th><th class="num">Total dû</th><th class="num">Dettes actives</th><th></th></tr>
         </thead>
         <tbody id="debtsTableBody"></tbody>
+      </table>
+      </div>
+    </section>
+
+    <!--================ PRODUITS À COMMANDER ================-->
+    <section class="view" id="view-restock">
+      <div class="view-header">
+        <div>
+          <h1>Produits à commander</h1>
+          <p id="restockCount">—</p>
+        </div>
+        <div class="view-actions">
+          <button class="btn btn-primary" id="addRestockBtn"><i class="fa-solid fa-plus"></i> Noter un produit manquant</button>
+        </div>
+      </div>
+      <div class="table-scroll">
+      <table class="data-table">
+        <thead>
+          <tr><th>Produit</th><th>Origine</th><th class="num">Stock actuel</th><th>Note</th><th>Ajouté le</th><th></th></tr>
+        </thead>
+        <tbody id="restockTableBody"></tbody>
       </table>
       </div>
     </section>
@@ -509,6 +531,27 @@
       <button class="btn btn-primary" id="savePaymentBtn">Enregistrer</button>
     </div>
     <p class="form-feedback" id="paymentFeedback"></p>
+  </div>
+</div>
+
+<!--================ MODALE : NOTER UN PRODUIT MANQUANT ================-->
+<div class="modal-overlay" id="restockModal">
+  <div class="modal-box">
+    <button class="modal-close" data-close="restockModal">✕</button>
+    <h2>Noter un produit manquant</h2>
+
+    <div class="field">
+      <label>Produit *</label>
+      <input type="text" id="restockLabel" placeholder="Nom d'un article existant ou d'un nouveau produit" list="restockArticleList">
+      <datalist id="restockArticleList"></datalist>
+    </div>
+    <div class="field"><label>Note</label><textarea id="restockNote" placeholder="Ex : quantité voulue, fournisseur à contacter…"></textarea></div>
+
+    <div class="modal-footer">
+      <button class="btn btn-secondary" data-close="restockModal">Annuler</button>
+      <button class="btn btn-primary" id="saveRestockBtn">Enregistrer</button>
+    </div>
+    <p class="form-feedback" id="restockFeedback"></p>
   </div>
 </div>
 

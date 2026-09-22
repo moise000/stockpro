@@ -557,6 +557,23 @@ const server = http.createServer(async (req, res) => {
       return sendJSON(res, 200, result);
     }
 
+    // ===== PRODUITS MANQUANTS / À COMMANDER =====
+    if (pathname === '/api/restock' && req.method === 'GET') {
+      return sendJSON(res, 200, store.getRestockItems());
+    }
+    if (pathname === '/api/restock' && req.method === 'POST') {
+      const body = await parseBody(req).catch(() => ({}));
+      if (!isNonEmpty(body.label, { min: 2, max: 150 })) return sendJSON(res, 400, { error: 'Nom de produit invalide' });
+      const item = store.insertRestockItem({ label: body.label.trim(), note: body.note || '' });
+      return sendJSON(res, 201, item);
+    }
+    const restockMatch = pathname.match(/^\/api\/restock\/(\d+)$/);
+    if (restockMatch && req.method === 'DELETE') {
+      const ok = store.deleteRestockItem(Number(restockMatch[1]));
+      if (!ok) return sendJSON(res, 404, { error: 'Entrée introuvable' });
+      return sendJSON(res, 200, { success: true });
+    }
+
     // ===== Fichiers statiques =====
     if (req.method === 'GET') return serveStatic(req, res);
 

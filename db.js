@@ -107,6 +107,15 @@ db.exec(`
     FOREIGN KEY (debtId) REFERENCES debts(id) ON DELETE CASCADE
   );
 
+  CREATE TABLE IF NOT EXISTS restock_items (
+    id INTEGER PRIMARY KEY,
+    articleId INTEGER,
+    label TEXT NOT NULL,
+    note TEXT,
+    createdAt TEXT NOT NULL,
+    FOREIGN KEY (articleId) REFERENCES articles(id) ON DELETE SET NULL
+  );
+
   CREATE INDEX IF NOT EXISTS idx_articles_category ON articles(categoryId);
   CREATE INDEX IF NOT EXISTS idx_articles_supplier ON articles(supplierId);
   CREATE INDEX IF NOT EXISTS idx_movements_article ON stock_movements(articleId);
@@ -118,6 +127,7 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_debts_customer ON debts(customerId);
   CREATE INDEX IF NOT EXISTS idx_debts_status ON debts(status);
   CREATE INDEX IF NOT EXISTS idx_debtpayments_debt ON debt_payments(debtId);
+  CREATE INDEX IF NOT EXISTS idx_restockitems_article ON restock_items(articleId);
 `);
 
 // Filet de sécurité pour une base créée avant l'ajout de l'annulation de vente
@@ -617,6 +627,59 @@ function addDebtPayment(debtId, { amount, note }) {
 }
 
 // =====================================================
+// PRODUITS MANQUANTS / À COMMANDER
+// =====================================================
+// Liste tenue à la main par le gérant : soit un article déjà au catalogue
+// (identifié automatiquement par son nom), soit un tout nouveau produit pas
+// encore vendu. Un article du catalogue sort automatiquement de la liste
+// dès que son stock repasse au-dessus du seuil d'alerte ; un nouveau
+// produit (jamais lié à une fiche article) reste jusqu'à suppression
+// manuelle, faute de stock à surveiller.
+const RESTOCK_SELECT = `
+  SELECT r.*, a.name as articleName, a.quantity as articleQuantity,
+         a.minStock as articleMinStock, a.unit as articleUnit
+  FROM restock_items r
+  LEFT JOIN articles a ON a.id = r.articleId
+`;
+
+function getRestockItems() {
+  const rows = db.prepare(`
+    ${RESTOCK_SELECT}
+    WHERE r.articleId IS NULL OR a.quantity <= a.minStock
+    ORDER BY r.createdAt DESC
+  `).all();
+  return rows.map(r => ({
+    ...r,
+    isCatalogArticle: r.articleId !== null,
+    displayName: r.articleId !== null ? r.articleName : r.label
+  }));
+}
+
+function getRestockItemById(id) {
+  const r = db.prepare(`${RESTOCK_SELECT} WHERE r.id = ?`).get(id);
+  if (!r) return null;
+  return { ...r, isCatalogArticle: r.articleId !== null, displayName: r.articleId !== null ? r.articleName : r.label };
+}
+
+// Si le texte tapé correspond exactement (insensible à la casse) à un
+// article déjà au catalogue, l'entrée est liée à cet article ; sinon
+// c'est noté comme un nouveau produit.
+function insertRestockItem({ label, note }) {
+  const clean = String(label).trim();
+  const match = findMatchingArticle({ name: clean });
+  const info = db.prepare(`
+    INSERT INTO restock_items (articleId, label, note, createdAt)
+    VALUES (?, ?, ?, ?)
+  `).run(match ? match.id : null, clean, note || '', new Date().toISOString());
+  return getRestockItemById(info.lastInsertRowid);
+}
+
+function deleteRestockItem(id) {
+  const info = db.prepare('DELETE FROM restock_items WHERE id = ?').run(id);
+  return info.changes > 0;
+}
+
+// =====================================================
 // TABLEAU DE BORD / RAPPORTS
 // =====================================================
 function getDashboard() {
@@ -748,6 +811,7 @@ module.exports = {
   createSale, getSales, getSaleById, cancelSale,
   getCustomers, getCustomerById, insertCustomer, updateCustomer, deleteCustomer, ensureCustomerByName,
   getDebts, getDebtById, createDebt, addDebtPayment,
+  getRestockItems, getRestockItemById, insertRestockItem, deleteRestockItem,
   getDashboard, getTopArticles, getSalesByDay, getCategoryValueBreakdown, getReorderSuggestions
 };
 
