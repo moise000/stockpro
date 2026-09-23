@@ -1336,9 +1336,18 @@ async function savePayment() {
 /* =====================================================
    PRODUITS MANQUANTS / À COMMANDER
 ===================================================== */
+let restockItemsCache = [];
+
 function initRestock() {
   document.getElementById('addRestockBtn').addEventListener('click', () => openRestockModal());
   document.getElementById('saveRestockBtn').addEventListener('click', saveRestock);
+  document.getElementById('printRestockBtn').addEventListener('click', () => {
+    if (restockItemsCache.length === 0) {
+      showToast('Aucun produit à imprimer.', 'error');
+      return;
+    }
+    printRestockList(restockItemsCache);
+  });
 }
 
 async function loadRestock() {
@@ -1352,6 +1361,7 @@ async function loadRestock() {
       articles.map(a => `<option value="${a.name}">`).join('');
 
     const items = await api('/api/restock');
+    restockItemsCache = items;
     document.getElementById('restockCount').textContent =
       items.length === 0 ? 'Aucun produit noté' : `${items.length} produit(s) à commander`;
 
@@ -1423,6 +1433,77 @@ async function deleteRestock(id) {
   } catch (e) {
     showToast(e.message || 'Une erreur est survenue.', 'error');
   }
+}
+
+/* ---- Impression / export de la liste des produits à commander ---- */
+function printRestockList(items) {
+  const win = window.open('', '_blank', 'width=480,height=720');
+  const rows = items.map(r => `
+    <tr>
+      <td>${r.displayName}</td>
+      <td style="text-align:center;">${r.isCatalogArticle ? `${r.articleQuantity} ${r.articleUnit || ''}`.trim() : '—'}</td>
+      <td>${r.note || ''}</td>
+      <td style="width:70px;"></td>
+    </tr>
+  `).join('');
+  win.document.write(`
+    <!DOCTYPE html>
+    <html lang="fr">
+    <head>
+      <meta charset="UTF-8">
+      <title>Produits à commander — ${BUSINESS_NAME}</title>
+      <style>
+        :root{ --accent: #C6540A; --accent-dark: #A2440A; --ink: #1c1c1c; --muted: #6b6b6b; --border: #e2ddd6; }
+        *{ box-sizing: border-box; }
+        body{
+          font-family: -apple-system, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+          font-size: 13px; color: var(--ink); margin: 0; padding: 28px 26px;
+        }
+        .letterhead{
+          display: flex; align-items: center; justify-content: space-between;
+          gap: 16px; padding-bottom: 16px; border-bottom: 3px solid var(--accent); margin-bottom: 18px;
+        }
+        .letterhead-name{ font-size: 19px; font-weight: 800; letter-spacing: .3px; color: var(--accent-dark); line-height: 1.25; }
+        .letterhead-phones{ font-size: 12px; color: var(--muted); margin-top: 4px; }
+        .letterhead-badge{
+          background: var(--accent); color: white; font-weight: 700; font-size: 11.5px;
+          letter-spacing: .5px; padding: 6px 12px; border-radius: 20px; white-space: nowrap;
+        }
+        .meta-row{ margin-bottom: 16px; font-size: 12.5px; color: var(--muted); }
+        table{ width: 100%; border-collapse: collapse; margin: 6px 0 4px; }
+        th{
+          text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: .4px;
+          color: var(--muted); padding: 6px 4px; border-bottom: 2px solid var(--ink);
+        }
+        td{ padding: 9px 4px; border-bottom: 1px solid var(--border); font-size: 13px; vertical-align: top; }
+        .footer{ text-align: center; margin-top: 26px; font-size: 11.5px; color: var(--muted); }
+        @media print{ body{ padding: 12mm; } }
+      </style>
+    </head>
+    <body>
+      <div class="letterhead">
+        <div>
+          <div class="letterhead-name">${BUSINESS_NAME}</div>
+          <div class="letterhead-phones">Tél : ${BUSINESS_PHONES}</div>
+        </div>
+        <div class="letterhead-badge">À COMMANDER</div>
+      </div>
+
+      <div class="meta-row">Liste établie le ${formatDate(new Date().toISOString())} — ${items.length} produit(s)</div>
+
+      <table>
+        <thead><tr><th>Produit</th><th style="text-align:center;">Stock actuel</th><th>Note</th><th>Reçu ✓</th></tr></thead>
+        <tbody>
+          ${rows}
+        </tbody>
+      </table>
+
+      <p class="footer">${BUSINESS_NAME}</p>
+      <script>window.onload = () => window.print();</script>
+    </body>
+    </html>
+  `);
+  win.document.close();
 }
 
 /* =====================================================
