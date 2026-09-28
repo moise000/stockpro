@@ -33,10 +33,23 @@
 <!--================ APPLICATION ================-->
 <div class="app-shell" id="appShell">
 
-  <aside class="sidebar">
+  <!-- Barre visible uniquement sur mobile/tablette : ouvre le menu en tiroir -->
+  <div class="mobile-topbar" id="mobileTopbar">
+    <button class="hamburger-btn" id="hamburgerBtn" aria-label="Ouvrir le menu" aria-expanded="false" aria-controls="mainSidebar">
+      <i class="fa-solid fa-bars"></i>
+    </button>
+    <div class="mobile-topbar-brand">
+      <div class="mark"><i class="fa-solid fa-warehouse"></i></div>
+      <span class="mobile-topbar-name">Touba Sarr &amp; Frère</span>
+    </div>
+  </div>
+  <div class="sidebar-overlay" id="sidebarOverlay"></div>
+
+  <aside class="sidebar" id="mainSidebar">
     <div class="sidebar-brand">
       <div class="mark"><i class="fa-solid fa-warehouse"></i></div>
       <div class="name">Touba Sarr &amp; Frère</div>
+      <button class="sidebar-close-btn" id="sidebarCloseBtn" aria-label="Fermer le menu"><i class="fa-solid fa-xmark"></i></button>
     </div>
     <ul class="nav-list">
       <li class="nav-item active" data-view="dashboard"><i class="fa-solid fa-gauge-high"></i> Tableau de bord</li>
@@ -539,7 +552,7 @@
 <div class="modal-overlay" id="restockModal">
   <div class="modal-box">
     <button class="modal-close" data-close="restockModal">✕</button>
-    <h2>Noter un produit manquant</h2>
+    <h2 id="restockModalTitle">Noter un produit manquant</h2>
 
     <div class="field">
       <label>Produit *</label>

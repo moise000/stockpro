@@ -568,6 +568,13 @@ const server = http.createServer(async (req, res) => {
       return sendJSON(res, 201, item);
     }
     const restockMatch = pathname.match(/^\/api\/restock\/(\d+)$/);
+    if (restockMatch && req.method === 'PUT') {
+      const body = await parseBody(req).catch(() => ({}));
+      if (!isNonEmpty(body.label, { min: 2, max: 150 })) return sendJSON(res, 400, { error: 'Nom de produit invalide' });
+      const item = store.updateRestockItem(Number(restockMatch[1]), { label: body.label.trim(), note: body.note || '' });
+      if (!item) return sendJSON(res, 404, { error: 'Entrée introuvable' });
+      return sendJSON(res, 200, item);
+    }
     if (restockMatch && req.method === 'DELETE') {
       const ok = store.deleteRestockItem(Number(restockMatch[1]));
       if (!ok) return sendJSON(res, 404, { error: 'Entrée introuvable' });

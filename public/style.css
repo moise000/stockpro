@@ -46,6 +46,7 @@ body{
   font-size: 15.5px;
 }
 a{ color: inherit; text-decoration: none; }
+body.no-scroll{ overflow: hidden; }
 button{ font-family: inherit; }
 input, select, textarea{ font-family: inherit; }
 
@@ -269,6 +270,79 @@ input, select, textarea{ font-family: inherit; }
   transition: all .15s ease;
 }
 .logout-btn:hover{ border-color: var(--danger); color: #fca5a5; }
+
+/* ---- Barre mobile + menu en tiroir (hamburger) ---- */
+.mobile-topbar{
+  display: none;
+  align-items: center;
+  gap: 14px;
+  padding: 0 16px;
+  height: 56px;
+  background-color: var(--steel);
+  color: white;
+  position: sticky;
+  top: 0;
+  z-index: 60;
+  flex-shrink: 0;
+}
+.hamburger-btn{
+  width: 36px; height: 36px;
+  border-radius: 8px;
+  border: none;
+  background: rgba(255,255,255,0.08);
+  color: white;
+  font-size: 16px;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+  transition: background .15s ease;
+}
+.hamburger-btn:hover{ background: rgba(255,255,255,0.16); }
+.mobile-topbar-brand{ display: flex; align-items: center; gap: 10px; min-width: 0; }
+.mobile-topbar-brand .mark{
+  width: 28px; height: 28px;
+  border-radius: 7px;
+  background: var(--accent);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 13px;
+  color: white;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+.mobile-topbar-name{
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 15px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sidebar-close-btn{
+  display: none;
+  margin-left: auto;
+  width: 28px; height: 28px;
+  border-radius: 7px;
+  border: none;
+  background: rgba(255,255,255,0.08);
+  color: #DCE0E2;
+  cursor: pointer;
+  align-items: center; justify-content: center;
+  font-size: 13px;
+  flex-shrink: 0;
+  transition: background .15s ease;
+}
+.sidebar-close-btn:hover{ background: rgba(255,255,255,0.16); color: white; }
+.sidebar-overlay{
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(15,17,19,0.55);
+  z-index: 70;
+  opacity: 0;
+  transition: opacity .25s ease;
+}
+.sidebar-overlay.visible{ display: block; }
+.sidebar-overlay.open{ opacity: 1; }
 
 /* ---- Main content ---- */
 .main{
@@ -856,16 +930,33 @@ input, select, textarea{ font-family: inherit; }
 .report-bar-fill{ height: 100%; background: var(--accent); border-radius: 6px; display: flex; align-items: center; }
 .report-bar-value{ font-family: var(--font-mono); font-size: 12px; font-weight: 700; width: 70px; text-align: right; flex-shrink: 0; }
 
-/* ---- Responsive ---- */
+/* ---- Responsive : menu en tiroir (hamburger) sur mobile/tablette ---- */
 @media (max-width: 900px){
   .app-shell.visible{ flex-direction: column; }
-  .sidebar{ width: 100%; height: auto; position: relative; flex-direction: row; overflow: hidden; }
-  .sidebar-brand{ border-bottom: none; border-right: 1px solid rgba(255,255,255,0.08); flex-shrink: 0; }
-  .sidebar-brand .name{ font-size: 13.5px; white-space: nowrap; }
-  .nav-list{ display: flex; margin: 0; padding: 10px; overflow-x: auto; -webkit-overflow-scrolling: touch; }
-  .nav-item{ margin-right: 4px; margin-bottom: 0; white-space: nowrap; }
-  .sidebar-footer{ display: none; }
+  .mobile-topbar{ display: flex; }
+
+  .sidebar{
+    position: fixed;
+    top: 0; left: 0;
+    width: 280px;
+    max-width: 84vw;
+    height: 100vh;
+    transform: translateX(-100%);
+    transition: transform .25s cubic-bezier(.16,1,.3,1);
+    z-index: 80;
+    box-shadow: 4px 0 24px rgba(0,0,0,0.25);
+  }
+  .sidebar.open{ transform: translateX(0); }
+  .sidebar-close-btn{ display: flex; }
+  .sidebar-footer{ display: block; }
+
   .main{ padding: 20px; }
+}
+
+@media (min-width: 901px){
+  /* Le tiroir n'existe que sur mobile : sur desktop tout doit rester visible
+     même si les classes .open ont été laissées par un redimensionnement. */
+  .sidebar{ transform: none !important; }
 }
 
 @media (prefers-reduced-motion: reduce){

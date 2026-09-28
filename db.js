@@ -674,6 +674,20 @@ function insertRestockItem({ label, note }) {
   return getRestockItemById(info.lastInsertRowid);
 }
 
+// Même résolution catalogue qu'à la création : si le nom modifié
+// correspond maintenant à un autre article (ou n'en correspond plus
+// aucun), le lien articleId est recalculé en conséquence.
+function updateRestockItem(id, { label, note }) {
+  const existing = getRestockItemById(id);
+  if (!existing) return null;
+  const clean = label !== undefined ? String(label).trim() : existing.label;
+  const match = findMatchingArticle({ name: clean });
+  db.prepare(`
+    UPDATE restock_items SET articleId = ?, label = ?, note = ? WHERE id = ?
+  `).run(match ? match.id : null, clean, note !== undefined ? note : (existing.note || ''), id);
+  return getRestockItemById(id);
+}
+
 function deleteRestockItem(id) {
   const info = db.prepare('DELETE FROM restock_items WHERE id = ?').run(id);
   return info.changes > 0;
@@ -811,7 +825,7 @@ module.exports = {
   createSale, getSales, getSaleById, cancelSale,
   getCustomers, getCustomerById, insertCustomer, updateCustomer, deleteCustomer, ensureCustomerByName,
   getDebts, getDebtById, createDebt, addDebtPayment,
-  getRestockItems, getRestockItemById, insertRestockItem, deleteRestockItem,
+  getRestockItems, getRestockItemById, insertRestockItem, updateRestockItem, deleteRestockItem,
   getDashboard, getTopArticles, getSalesByDay, getCategoryValueBreakdown, getReorderSuggestions
 };
 

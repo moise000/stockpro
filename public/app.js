@@ -44,6 +44,21 @@ function handleSessionExpired() {
   document.getElementById('loginPassword').value = '';
 }
 
+// Échappe tout texte inséré via innerHTML/document.write — sans ça, un nom
+// d'article, un nom de client ou une note contenant par exemple
+// "<script>" ou une balise HTML serait interprété par le navigateur au
+// lieu de s'afficher comme texte (faille XSS), et pourrait voler la
+// session d'un autre utilisateur connecté (l'app est partagée en ligne).
+function escapeHtml(value) {
+  if (value === null || value === undefined) return '';
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 function formatFCFA(n) {
   return `${Math.round(n).toLocaleString('fr-FR')} FCFA`;
 }
@@ -123,7 +138,51 @@ function initNav() {
   });
   const quickSaleBtn = document.getElementById('quickSaleBtn');
   if (quickSaleBtn) quickSaleBtn.addEventListener('click', () => switchView('pos'));
+  initMobileMenu();
 }
+
+/* ---- Menu en tiroir (hamburger) sur mobile/tablette ---- */
+function initMobileMenu() {
+  const sidebar = document.getElementById('mainSidebar');
+  const overlay = document.getElementById('sidebarOverlay');
+  const hamburgerBtn = document.getElementById('hamburgerBtn');
+  const closeBtn = document.getElementById('sidebarCloseBtn');
+  if (!sidebar || !overlay || !hamburgerBtn) return;
+
+  function openMenu() {
+    sidebar.classList.add('open');
+    overlay.classList.add('visible');
+    // requestAnimationFrame pour que la transition d'opacité se joue bien
+    requestAnimationFrame(() => overlay.classList.add('open'));
+    document.body.classList.add('no-scroll');
+    hamburgerBtn.setAttribute('aria-expanded', 'true');
+  }
+  function closeMenu() {
+    sidebar.classList.remove('open');
+    overlay.classList.remove('open');
+    document.body.classList.remove('no-scroll');
+    hamburgerBtn.setAttribute('aria-expanded', 'false');
+    setTimeout(() => { if (!overlay.classList.contains('open')) overlay.classList.remove('visible'); }, 250);
+  }
+
+  hamburgerBtn.addEventListener('click', () => {
+    if (sidebar.classList.contains('open')) closeMenu(); else openMenu();
+  });
+  if (closeBtn) closeBtn.addEventListener('click', closeMenu);
+  overlay.addEventListener('click', closeMenu);
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && sidebar.classList.contains('open')) closeMenu();
+  });
+  // Referme le tiroir dès qu'on choisit une page dans le menu
+  document.querySelectorAll('.nav-item').forEach(item => {
+    item.addEventListener('click', closeMenu);
+  });
+  // Si l'écran repasse en format bureau, on s'assure que le tiroir est refermé
+  window.addEventListener('resize', () => {
+    if (window.innerWidth > 900) closeMenu();
+  });
+}
+
 function switchView(view) {
   document.querySelectorAll('.nav-item').forEach(i => i.classList.toggle('active', i.dataset.view === view));
   document.querySelectorAll('.view').forEach(v => v.classList.toggle('active', v.id === `view-${view}`));
@@ -149,12 +208,12 @@ async function loadSharedData() {
 
     const catSelect = document.getElementById('articleCategoryFilter');
     catSelect.innerHTML = '<option value="">Toutes les catégories</option>' +
-      categories.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+      categories.map(c => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join('');
 
     document.getElementById('categoryList').innerHTML =
-      categories.map(c => `<option value="${c.name}">`).join('');
+      categories.map(c => `<option value="${escapeHtml(c.name)}">`).join('');
     document.getElementById('supplierList').innerHTML =
-      suppliers.map(s => `<option value="${s.name}">`).join('');
+      suppliers.map(s => `<option value="${escapeHtml(s.name)}">`).join('');
   } catch (e) { /* silencieux */ }
 }
 
@@ -266,7 +325,7 @@ async function loadDashboard() {
     } else {
       body.innerHTML = reorder.slice(0, 15).map(a => `
         <tr>
-          <td><strong>${a.name}</strong></td>
+          <td><strong>${escapeHtml(a.name)}</strong></td>
           <td class="num"><span class="qty-tag qty-low">${a.quantity}</span></td>
           <td class="num">${a.minStock}</td>
           <td class="num">${a.daysRemaining !== null ? `${a.daysRemaining} j.` : '—'}</td>
@@ -332,7 +391,7 @@ function renderDonutChart(data) {
   const legend = data.map((d, i) => `
     <div class="donut-legend-row" style="animation-delay:${.25 + i * 0.05}s">
       <span class="donut-legend-dot" style="background:${colors[i % colors.length]};"></span>
-      <span class="donut-legend-name">${d.name}</span>
+      <span class="donut-legend-name">${escapeHtml(d.name)}</span>
       <span class="donut-legend-value">${formatFCFA(d.value)}</span>
     </div>
   `).join('');
@@ -392,13 +451,13 @@ async function loadArticles() {
 
     body.innerHTML = cachedArticles.map(a => `
       <tr>
-        <td><strong>${a.name}</strong></td>
-        <td>${a.reference ? `<span class="ref-tag">${a.reference}</span>` : '—'}</td>
-        <td>${a.categoryName ? `<span class="cat-tag">${a.categoryName}</span>` : '—'}</td>
-        <td class="num"><span class="qty-tag ${a.quantity <= a.minStock ? 'qty-low' : 'qty-ok'}">${a.quantity} ${a.unit}</span></td>
+        <td><strong>${escapeHtml(a.name)}</strong></td>
+        <td>${a.reference ? `<span class="ref-tag">${escapeHtml(a.reference)}</span>` : '—'}</td>
+        <td>${a.categoryName ? `<span class="cat-tag">${escapeHtml(a.categoryName)}</span>` : '—'}</td>
+        <td class="num"><span class="qty-tag ${a.quantity <= a.minStock ? 'qty-low' : 'qty-ok'}">${a.quantity} ${escapeHtml(a.unit)}</span></td>
         <td class="num">${formatFCFA(a.purchasePrice)}</td>
         <td class="num">${formatFCFA(a.salePrice)}</td>
-        <td>${a.supplierName || '—'}</td>
+        <td>${escapeHtml(a.supplierName) || '—'}</td>
         <td class="row-actions">
           <button class="icon-btn stock" data-stock="${a.id}" title="Mouvement de stock"><i class="fa-solid fa-right-left"></i></button>
           <button class="icon-btn edit" data-edit="${a.id}" title="Modifier"><i class="fa-solid fa-pen"></i></button>
@@ -661,9 +720,9 @@ function renderPOSResults() {
 
   container.innerHTML = list.slice(0, 60).map(a => `
     <div class="pos-item-card ${a.quantity <= 0 ? 'disabled' : ''}" data-add="${a.id}">
-      <div class="pos-item-name">${a.name}</div>
+      <div class="pos-item-name">${escapeHtml(a.name)}</div>
       <div class="pos-item-price">${formatFCFA(a.salePrice)}</div>
-      <div class="pos-item-stock">Stock : ${a.quantity} ${a.unit}</div>
+      <div class="pos-item-stock">Stock : ${a.quantity} ${escapeHtml(a.unit)}</div>
     </div>
   `).join('');
 
@@ -694,7 +753,7 @@ function renderCart() {
     list.innerHTML = cart.map((c, i) => `
       <div class="cart-row">
         <div class="cart-row-top">
-          <div class="cart-row-name">${c.name}${c.isManual ? '<span class="cart-row-manual-badge" title="Article libre, hors stock — non vendable via Encaisser">LIBRE</span>' : ''}</div>
+          <div class="cart-row-name">${escapeHtml(c.name)}${c.isManual ? '<span class="cart-row-manual-badge" title="Article libre, hors stock — non vendable via Encaisser">LIBRE</span>' : ''}</div>
           <button class="cart-row-remove" data-remove="${i}" title="Retirer"><i class="fa-solid fa-xmark"></i></button>
         </div>
         <div class="cart-row-bottom">
@@ -809,8 +868,8 @@ async function loadSales() {
       <tr${s.status === 'cancelled' ? ' style="opacity:.55;"' : ''}>
         <td class="ref-tag">#${s.id.toString().slice(-6)}</td>
         <td>${formatDate(s.createdAt)}</td>
-        <td>${s.clientName || 'Client de passage'}</td>
-        <td>${s.paymentMethod}</td>
+        <td>${escapeHtml(s.clientName) || 'Client de passage'}</td>
+        <td>${escapeHtml(s.paymentMethod)}</td>
         <td class="num">${formatFCFA(s.total)}</td>
         <td>${s.status === 'cancelled'
               ? '<span class="qty-tag qty-low">Annulée</span>'
@@ -829,7 +888,7 @@ async function viewSale(id) {
     const sale = await api(`/api/sales/${id}`);
     document.getElementById('saleDetailContent').innerHTML = `
       <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px;">
-        <p style="color:var(--muted); font-size:13px; margin:0;">${formatDate(sale.createdAt)} — ${sale.clientName || 'Client de passage'} — ${sale.paymentMethod}</p>
+        <p style="color:var(--muted); font-size:13px; margin:0;">${formatDate(sale.createdAt)} — ${escapeHtml(sale.clientName) || 'Client de passage'} — ${escapeHtml(sale.paymentMethod)}</p>
         ${sale.status === 'cancelled' ? '<span class="qty-tag qty-low">Vente annulée</span>' : '<span class="qty-tag qty-ok">Vente validée</span>'}
       </div>
       <table class="data-table" style="margin-top:12px;">
@@ -837,7 +896,7 @@ async function viewSale(id) {
         <tbody>
           ${sale.items.map(it => `
             <tr>
-              <td>${it.articleName}</td>
+              <td>${escapeHtml(it.articleName)}</td>
               <td class="num">${it.quantity}</td>
               <td class="num">${formatFCFA(it.unitPrice)}</td>
               <td class="num">${formatFCFA(it.subtotal)}</td>
@@ -883,7 +942,7 @@ function printReceipt(sale) {
   const win = window.open('', '_blank', 'width=480,height=720');
   const rows = sale.items.map(it => `
     <tr>
-      <td>${it.articleName}</td>
+      <td>${escapeHtml(it.articleName)}</td>
       <td style="text-align:center;">${it.quantity}</td>
       <td style="text-align:right;">${formatFCFA(it.unitPrice)}</td>
       <td style="text-align:right;">${formatFCFA(it.subtotal)}</td>
@@ -948,8 +1007,8 @@ function printReceipt(sale) {
       <div class="meta-row">
         <div class="meta-col"><span>N° de facture</span><strong>#${sale.id.toString().slice(-6)}</strong></div>
         <div class="meta-col"><span>Date</span><strong>${formatDate(sale.createdAt)}</strong></div>
-        <div class="meta-col"><span>Client</span><strong>${sale.clientName || 'Client de passage'}</strong></div>
-        <div class="meta-col"><span>Paiement</span><strong>${sale.paymentMethod}</strong></div>
+        <div class="meta-col"><span>Client</span><strong>${escapeHtml(sale.clientName) || 'Client de passage'}</strong></div>
+        <div class="meta-col"><span>Paiement</span><strong>${escapeHtml(sale.paymentMethod)}</strong></div>
       </div>
 
       <table>
@@ -973,7 +1032,7 @@ function printDevis({ clientName, items, total }) {
   const win = window.open('', '_blank', 'width=480,height=720');
   const rows = items.map(it => `
     <tr>
-      <td>${it.articleName}</td>
+      <td>${escapeHtml(it.articleName)}</td>
       <td style="text-align:center;">${it.quantity}</td>
       <td style="text-align:right;">${formatFCFA(it.unitPrice)}</td>
       <td style="text-align:right;">${formatFCFA(it.subtotal)}</td>
@@ -1036,7 +1095,7 @@ function printDevis({ clientName, items, total }) {
 
       <div class="meta-row">
         <div class="meta-col"><span>Date</span><strong>${today}</strong></div>
-        <div class="meta-col"><span>Client</span><strong>${clientName || 'Client de passage'}</strong></div>
+        <div class="meta-col"><span>Client</span><strong>${escapeHtml(clientName) || 'Client de passage'}</strong></div>
       </div>
 
       <table>
@@ -1076,9 +1135,9 @@ async function loadSuppliers() {
     }
     body.innerHTML = suppliers.map(s => `
       <tr>
-        <td><strong>${s.name}</strong></td>
-        <td>${s.phone || '—'}</td>
-        <td>${s.email || '—'}</td>
+        <td><strong>${escapeHtml(s.name)}</strong></td>
+        <td>${escapeHtml(s.phone) || '—'}</td>
+        <td>${escapeHtml(s.email) || '—'}</td>
         <td class="num">${s.articleCount}</td>
         <td class="row-actions">
           <button class="icon-btn edit" data-edit-sup="${s.id}" title="Modifier"><i class="fa-solid fa-pen"></i></button>
@@ -1182,7 +1241,7 @@ async function loadDebts() {
   try {
     customersCache = await api('/api/customers');
     document.getElementById('customerList').innerHTML =
-      customersCache.map(c => `<option value="${c.name}">`).join('');
+      customersCache.map(c => `<option value="${escapeHtml(c.name)}">`).join('');
 
     const withDebt = customersCache.filter(c => c.totalDebt > 0);
     const totalOwed = customersCache.reduce((sum, c) => sum + c.balance, 0);
@@ -1198,8 +1257,8 @@ async function loadDebts() {
     const sorted = [...withDebt].sort((a, b) => b.balance - a.balance);
     body.innerHTML = sorted.map(c => `
       <tr>
-        <td><strong>${c.name}</strong></td>
-        <td>${c.phone || '—'}</td>
+        <td><strong>${escapeHtml(c.name)}</strong></td>
+        <td>${escapeHtml(c.phone) || '—'}</td>
         <td class="num">${c.balance > 0 ? formatFCFA(c.balance) : '<span style="color:var(--success, #2e7d32);">Soldé</span>'}</td>
         <td class="num">${c.activeDebtCount}</td>
         <td class="row-actions">
@@ -1281,7 +1340,7 @@ async function openCustomerDebtsModal(customerId) {
             ${formatFCFA(d.amount)}${d.status === 'paid' ? '<span class="cart-row-manual-badge" style="color:var(--success,#2e7d32);">SOLDÉE</span>' : ''}
           </div>
         </div>
-        <p style="margin:4px 0; font-size:13px; color:var(--muted);">${d.note || 'Sans note'} — ${formatDate(d.createdAt)}</p>
+        <p style="margin:4px 0; font-size:13px; color:var(--muted);">${escapeHtml(d.note) || 'Sans note'} — ${formatDate(d.createdAt)}</p>
         <div class="cart-row-bottom">
           <div>Payé : ${formatFCFA(d.paid)} — Reste : <strong>${formatFCFA(d.remaining)}</strong></div>
           ${d.status !== 'paid' ? `<button class="btn btn-primary btn-sm" data-pay-debt="${d.id}">Enregistrer un paiement</button>` : ''}
@@ -1337,6 +1396,7 @@ async function savePayment() {
    PRODUITS MANQUANTS / À COMMANDER
 ===================================================== */
 let restockItemsCache = [];
+let editingRestockId = null;
 
 function initRestock() {
   document.getElementById('addRestockBtn').addEventListener('click', () => openRestockModal());
@@ -1358,7 +1418,7 @@ async function loadRestock() {
     // articles déjà au catalogue, pour rattacher automatiquement l'entrée.
     const articles = await api('/api/articles');
     document.getElementById('restockArticleList').innerHTML =
-      articles.map(a => `<option value="${a.name}">`).join('');
+      articles.map(a => `<option value="${escapeHtml(a.name)}">`).join('');
 
     const items = await api('/api/restock');
     restockItemsCache = items;
@@ -1372,16 +1432,19 @@ async function loadRestock() {
 
     body.innerHTML = items.map(r => `
       <tr>
-        <td><strong>${r.displayName}</strong></td>
+        <td><strong>${escapeHtml(r.displayName)}</strong></td>
         <td>${r.isCatalogArticle ? '<span class="cart-row-manual-badge">Catalogue</span>' : '<span class="cart-row-manual-badge" style="color:var(--accent);">Nouveau</span>'}</td>
-        <td class="num">${r.isCatalogArticle ? `${r.articleQuantity} ${r.articleUnit || ''}`.trim() : '—'}</td>
-        <td>${r.note || '—'}</td>
+        <td class="num">${r.isCatalogArticle ? `${r.articleQuantity} ${escapeHtml(r.articleUnit) || ''}`.trim() : '—'}</td>
+        <td>${escapeHtml(r.note) || '—'}</td>
         <td>${formatDate(r.createdAt)}</td>
         <td class="row-actions">
+          <button class="btn btn-secondary btn-sm" data-edit-restock="${r.id}">Modifier</button>
           <button class="btn btn-secondary btn-sm" data-remove-restock="${r.id}">Retirer</button>
         </td>
       </tr>
     `).join('');
+    body.querySelectorAll('[data-edit-restock]').forEach(b =>
+      b.addEventListener('click', () => openRestockModal(Number(b.dataset.editRestock))));
     body.querySelectorAll('[data-remove-restock]').forEach(b =>
       b.addEventListener('click', () => deleteRestock(Number(b.dataset.removeRestock))));
   } catch (e) {
@@ -1389,9 +1452,22 @@ async function loadRestock() {
   }
 }
 
-function openRestockModal() {
-  document.getElementById('restockLabel').value = '';
-  document.getElementById('restockNote').value = '';
+function openRestockModal(id) {
+  editingRestockId = id || null;
+  const titleEl = document.getElementById('restockModalTitle');
+  const saveBtn = document.getElementById('saveRestockBtn');
+  if (editingRestockId) {
+    const item = restockItemsCache.find(r => r.id === editingRestockId);
+    titleEl.textContent = 'Modifier le produit';
+    saveBtn.textContent = 'Enregistrer les modifications';
+    document.getElementById('restockLabel').value = item ? item.displayName : '';
+    document.getElementById('restockNote').value = item && item.note ? item.note : '';
+  } else {
+    titleEl.textContent = 'Noter un produit manquant';
+    saveBtn.textContent = 'Enregistrer';
+    document.getElementById('restockLabel').value = '';
+    document.getElementById('restockNote').value = '';
+  }
   document.getElementById('restockFeedback').textContent = '';
   Validators.clearAll(document.querySelectorAll('#restockModal input'));
   openModal('restockModal');
@@ -1409,14 +1485,24 @@ async function saveRestock() {
   }
 
   try {
-    await api('/api/restock', {
-      method: 'POST',
-      body: JSON.stringify({
-        label: labelEl.value.trim(),
-        note: document.getElementById('restockNote').value.trim()
-      })
-    });
-    showToast('Produit noté.', 'success');
+    const payload = {
+      label: labelEl.value.trim(),
+      note: document.getElementById('restockNote').value.trim()
+    };
+    if (editingRestockId) {
+      await api(`/api/restock/${editingRestockId}`, {
+        method: 'PUT',
+        body: JSON.stringify(payload)
+      });
+      showToast('Produit modifié.', 'success');
+    } else {
+      await api('/api/restock', {
+        method: 'POST',
+        body: JSON.stringify(payload)
+      });
+      showToast('Produit noté.', 'success');
+    }
+    editingRestockId = null;
     closeModal('restockModal');
     loadRestock();
   } catch (e) {
@@ -1440,9 +1526,9 @@ function printRestockList(items) {
   const win = window.open('', '_blank', 'width=480,height=720');
   const rows = items.map(r => `
     <tr>
-      <td>${r.displayName}</td>
-      <td style="text-align:center;">${r.isCatalogArticle ? `${r.articleQuantity} ${r.articleUnit || ''}`.trim() : '—'}</td>
-      <td>${r.note || ''}</td>
+      <td>${escapeHtml(r.displayName)}</td>
+      <td style="text-align:center;">${r.isCatalogArticle ? `${r.articleQuantity} ${escapeHtml(r.articleUnit) || ''}`.trim() : '—'}</td>
+      <td>${escapeHtml(r.note) || ''}</td>
       <td style="width:70px;"></td>
     </tr>
   `).join('');
@@ -1529,11 +1615,11 @@ async function loadMovements() {
     body.innerHTML = movements.map(m => `
       <tr>
         <td>${formatDate(m.createdAt)}</td>
-        <td><strong>${m.articleName}</strong>${m.articleReference ? ` <span class="ref-tag">${m.articleReference}</span>` : ''}</td>
+        <td><strong>${escapeHtml(m.articleName)}</strong>${m.articleReference ? ` <span class="ref-tag">${escapeHtml(m.articleReference)}</span>` : ''}</td>
         <td>${m.type === 'in' ? '<span class="qty-tag qty-ok">Entrée</span>' : '<span class="qty-tag qty-low">Sortie</span>'}</td>
         <td class="num">${m.quantity}</td>
-        <td>${m.reason}</td>
-        <td style="color:var(--muted);">${m.note || '—'}</td>
+        <td>${escapeHtml(m.reason)}</td>
+        <td style="color:var(--muted);">${escapeHtml(m.note) || '—'}</td>
       </tr>
     `).join('');
   } catch (e) {
@@ -1596,7 +1682,7 @@ async function loadReports() {
       const max = Math.max(...top.map(t => t.totalQty));
       chart.innerHTML = top.map((t, i) => `
         <div class="report-bar-row">
-          <div class="report-bar-label" title="${t.articleName}">${i + 1}. ${t.articleName}</div>
+          <div class="report-bar-label" title="${escapeHtml(t.articleName)}">${i + 1}. ${escapeHtml(t.articleName)}</div>
           <div class="report-bar-track">
             <div class="report-bar-fill" style="width:${Math.max(4, (t.totalQty / max) * 100)}%;"></div>
           </div>
