@@ -721,6 +721,7 @@ function renderPOSResults() {
   container.innerHTML = list.slice(0, 60).map(a => `
     <div class="pos-item-card ${a.quantity <= 0 ? 'disabled' : ''}" data-add="${a.id}">
       <div class="pos-item-name">${escapeHtml(a.name)}</div>
+      ${a.reference ? `<div class="pos-item-stock">Réf. ${escapeHtml(a.reference)}</div>` : ''}
       <div class="pos-item-price">${formatFCFA(a.salePrice)}</div>
       <div class="pos-item-stock">Stock : ${a.quantity} ${escapeHtml(a.unit)}</div>
     </div>

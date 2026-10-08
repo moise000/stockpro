@@ -267,13 +267,29 @@ function findMatchingArticle({ reference, name }) {
   return null;
 }
 
-// Si un article du même modèle existe déjà (même référence, ou même nom),
-// la quantité saisie vient s'ajouter à celle déjà en stock — jamais de
-// doublon créé pour un simple réapprovisionnement du même article. Seule
-// la quantité est fusionnée ; le prix, la catégorie, etc. de la fiche déjà
-// existante restent inchangés (pour les modifier, on édite la fiche).
+// Réapprovisionnement d'un article déjà au catalogue : la quantité saisie
+// s'ajoute à celle déjà en stock, sans créer de doublon. Seule la quantité
+// est fusionnée ; le prix, la catégorie, etc. de la fiche existante restent
+// inchangés (pour les modifier, on édite la fiche).
+//
+// Règle d'identification :
+//  - une référence est saisie  → seule la RÉFÉRENCE compte. Même nom mais
+//    référence différente = un autre article, qui est créé normalement
+//    (ex : deux « Vis à bois » de références différentes).
+//  - aucune référence saisie   → on fusionne par nom, mais seulement s'il
+//    n'existe qu'un seul article de ce nom (sinon on ne peut pas deviner
+//    lequel, donc on crée une nouvelle fiche plutôt que de se tromper).
+function findArticleToMerge({ reference, name }) {
+  const ref = reference ? String(reference).trim() : '';
+  if (ref) {
+    return db.prepare('SELECT * FROM articles WHERE reference = ?').get(ref) || null;
+  }
+  const rows = db.prepare('SELECT * FROM articles WHERE LOWER(TRIM(name)) = LOWER(TRIM(?)) LIMIT 2').all(name);
+  return rows.length === 1 ? rows[0] : null;
+}
+
 function insertOrMergeArticle(a) {
-  const existing = findMatchingArticle({ reference: a.reference, name: a.name });
+  const existing = findArticleToMerge({ reference: a.reference, name: a.name });
   if (existing) {
     const merged = adjustStock(existing.id, {
       type: 'in', quantity: a.quantity, reason: 'inventaire', note: 'Réapprovisionnement (même article)'
